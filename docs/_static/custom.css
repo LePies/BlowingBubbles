@@ -1,0 +1,195 @@
+/* BlowingBubbles — documentation styling */
+
+.logo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  margin: 1rem 0 1.5rem 0;
+}
+.logo-row img {
+  object-fit: contain;
+}
+
+/* Optional package icon on the landing page (Init-OmpyDocs -IconPath) */
+.package-icon-row {
+  display: flex;
+  justify-content: center;
+  margin: 0.5rem 0 1.25rem 0;
+}
+
+.package-icon-row img.package-icon {
+  object-fit: contain;
+  max-height: 96px;
+}
+
+.content .document {
+  max-width: 52em;
+}
+
+.content h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 0;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.content h2 {
+  font-weight: 600;
+  margin-top: 1.6em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.content h3 {
+  font-weight: 600;
+  margin-top: 1.4em;
+}
+
+dl.field-list dt {
+  font-weight: 600;
+  color: var(--color-foreground-primary);
+}
+
+dl.field-list dd {
+  margin-left: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.content p,
+.content li {
+  line-height: 1.6;
+}
+
+.content ul, .content ol {
+  margin: 0.5em 0 1em 0;
+}
+
+.content code.literal {
+  padding: 0.15em 0.4em;
+  border-radius: 0.25em;
+  font-size: 0.92em;
+}
+
+.content pre {
+  border-radius: 0.4em;
+  padding: 1em 1.2em;
+  line-height: 1.45;
+}
+
+.content .sig {
+  font-family: var(--font-stack--monospace);
+}
+
+.content .descname {
+  font-weight: 600;
+}
+
+.content table.docutils {
+  border-radius: 0.35em;
+  overflow: hidden;
+}
+
+.content table.docutils th, .content table.docutils td {
+  padding: 0.4em 0.75em;
+}
+
+.content .admonition {
+  border-radius: 0.35em;
+  padding: 0.75em 1em;
+}
+
+.todo-list {
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-brand-primary);
+  border-radius: 0.5rem;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0 1.5rem 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.todo-list ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.todo-list > ul {
+  padding-left: 0;
+}
+
+.todo-list li {
+  padding: 0.4rem 0;
+  padding-left: 0.5rem;
+  margin: 0;
+  line-height: 1.5;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.todo-list li:last-child {
+  border-bottom: none;
+}
+
+.todo-list ul ul {
+  margin: 0.25rem 0 0 1.25rem;
+  padding-left: 0;
+}
+
+.todo-list ul ul li {
+  border-bottom: none;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  font-size: 0.95em;
+  color: var(--color-foreground-muted);
+}
+
+.todo-list li p {
+  margin: 0;
+}
+
+.todo-list li p:first-child::first-letter {
+  font-weight: 700;
+  margin-right: 0.15em;
+}
+
+.api-subtitle {
+  font-family: var(--font-stack--monospace);
+  font-size: 0.9em;
+  color: var(--color-foreground-muted);
+  margin-top: -0.4em;
+  margin-bottom: 1.2em;
+}
+
+.api-cta {
+  display: block;
+  padding: 0.9rem 1.1rem;
+  margin: 1rem 0 1.25rem 0;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-brand-primary);
+  border-radius: 0.5rem;
+  background: var(--color-background-secondary);
+  font-size: 1.05em;
+}
+
+.api-cta p {
+  margin: 0;
+}
+
+p.rubric.api-class-header {
+  font-size: 1.35em;
+  font-weight: 700;
+  color: var(--color-brand-content);
+  letter-spacing: -0.01em;
+  margin-top: 1.6em;
+  margin-bottom: 0.25em;
+  padding-bottom: 0.15em;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.content dl.py.class > dt {
+  font-size: 0.95em;
+  background: var(--color-background-secondary);
+}

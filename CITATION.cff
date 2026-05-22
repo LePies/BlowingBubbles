@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+title: BlowingBubbles
+message: >-
+  If you use this software in published scientific work, please cite the
+  preferred reference below. See ACADEMIC_CITATION.md for details.
+type: software
+authors:
+  - family-names: Mohr
+    given-names: Oliver
+license: MIT
+repository-code: 'https://github.com/LePies/BlowingBubbles'
+version: 0.1.0
+preferred-citation:
+  type: article
+  authors:
+    - family-names: Mohr
+      given-names: Oliver
+  title: 'TODO: Paper title for BlowingBubbles'
+  journal: 'TODO: Journal or conference'
+  year: 2026
+  notes: >-
+    Software: BlowingBubbles. Manuscript in preparation; update when published.
+    BibTeX key: mohr_blowingbubbles2026 (see CITATION.bib).
