@@ -132,38 +132,38 @@ Fit the circuit (IFBB: start from peaks, grow branches up to ``rc_groups``)
 
     Fitting started (2 peaks -> up to 3 R–CPE branches)...
     Initial fit with 2 groups
-      Resistance Source:        5.1572e-01
-      Inductance:               3.9524e-07
+      Resistance Source:        2.1839e-01
+      Inductance:               3.9734e-07
       Inductance Exponent:      1.0000e+00
-      Resistances:            [2.8877e-01 2.8804e-01]
-      Capacitances:           [3.4950e-01 3.2773e+00]
+      Resistances:            [2.8714e-01 9.2739e-03]
+      Capacitances:           [1.5016e+00 1.3422e+02]
       Exponents:              [1.0000e+00 1.0000e+00]
-      Taus:                   [1.0093e-01 9.4401e-01]
+      Taus:                   [4.3116e-01 1.2448e+00]
 
     Fitting with 3 groups
        New parameters: 
-      Resistance Source:        2.1043e-01
-      Inductance:               3.9524e-07
+      Resistance Source:        2.1045e-01
+      Inductance:               3.8548e-07
       Inductance Exponent:      9.0000e-01
-      Resistances:            [9.3586e-02 8.7208e-04 2.1115e-01]
-      Capacitances:           [1.4588e-02 1.5580e+01 6.0867e-01]
-      Exponents:              [9.7878e-01 1.0000e+00 9.9486e-01]
-      Taus:                   [1.3653e-03 1.3587e-02 1.2852e-01]
+      Resistances:            [4.1221e-04 9.3388e-02 2.1141e-01]
+      Capacitances:           [5.0722e-02 1.4772e-02 6.0366e-01]
+      Exponents:              [1.0000e+00 9.7834e-01 9.9558e-01]
+      Taus:                   [2.0908e-05 1.3795e-03 1.2762e-01]
     
-       New cost: 8.466952686048719e-05
-       Old cost: 9.2054935833417e-05
-       Cost improvement: -7.385408972929806e-06
-       Cost improvement percentage: -8.022827788717896%
-    Fitting completed in 7.47 s.
+       New cost: 8.379647899861582e-05
+       Old cost: 8.738970766432556e-05
+       Cost improvement: -3.593228665709744e-06
+       Cost improvement percentage: -4.111729815497004%
+    Fitting completed in 6.17 s.
     Success: True
-    Final cost: 8.466953e-05
-      Resistance Source:        2.1063e-01
-      Inductance:               7.8476e-07
-      Inductance Exponent:      9.4872e-01
-      Resistances:            [8.9277e-02 5.7238e-03 2.0947e-01]
-      Capacitances:           [1.2617e-02 1.2953e+00 6.1278e-01]
-      Exponents:              [1.0000e+00 1.0000e+00 1.0000e+00]
-      Taus:                   [1.1264e-03 7.4140e-03 1.2836e-01]
+    Final cost: 8.379648e-05
+      Resistance Source:        2.1078e-01
+      Inductance:               7.5592e-07
+      Inductance Exponent:      9.5175e-01
+      Resistances:            [8.8912e-02 5.2123e-03 2.1030e-01]
+      Capacitances:           [1.2717e-02 1.2729e+00 6.0735e-01]
+      Exponents:              [9.9976e-01 1.0000e+00 9.9867e-01]
+      Taus:                   [1.1307e-03 6.6347e-03 1.2773e-01]
 
 
 
@@ -173,7 +173,7 @@ Fit the circuit (IFBB: start from peaks, grow branches up to ``rc_groups``)
 
 Nyquist plot: measured points and full-model overlay
 
-.. GENERATED FROM PYTHON SOURCE LINES 78-96
+.. GENERATED FROM PYTHON SOURCE LINES 78-89
 
 .. code-block:: Python
 
@@ -182,14 +182,7 @@ Nyquist plot: measured points and full-model overlay
     unit = r"$\Omega$"
 
     fig, ax = plt.subplots()
-    ax.plot(
-        eis_data.Real,
-        -eis_data.Imag,
-        linestyle="",
-        marker="o",
-        markersize=3,
-        label="measured",
-    )
+    eis_data.plot_nyquist(axes=ax)
     fit_result.parameters.plot_full_fit(freqs_plot, ax, unit=unit)
     ax.legend()
     ax.set_title("Synthetic EIS: measurement vs. fit")
@@ -210,7 +203,7 @@ Nyquist plot: measured points and full-model overlay
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 9.226 seconds)
+   **Total running time of the script:** (0 minutes 8.225 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_circuit_demo.py:

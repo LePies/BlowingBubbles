@@ -80,14 +80,7 @@ freqs_plot = np.logspace(-5, 5, 100)
 unit = r"$\Omega$"
 
 fig, ax = plt.subplots()
-ax.plot(
-    eis_data.Real,
-    -eis_data.Imag,
-    linestyle="",
-    marker="o",
-    markersize=3,
-    label="measured",
-)
+eis_data.plot_nyquist(axes=ax)
 fit_result.parameters.plot_full_fit(freqs_plot, ax, unit=unit)
 ax.legend()
 ax.set_title("Synthetic EIS: measurement vs. fit")
