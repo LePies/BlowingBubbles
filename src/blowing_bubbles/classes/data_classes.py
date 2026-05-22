@@ -6,7 +6,7 @@ the R–CPE ladder using iterative fast branch building.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -64,6 +64,7 @@ class EISData:
         self.normalized = "NO"
         self.normalization_area = 1
         self.norm_unit = ""
+        self.unit = ""
 
     @classmethod
     def from_csv(
@@ -170,6 +171,9 @@ class EISData:
         freq_names = ["f", "freq", "frequency"]
         real_names = ["r", "real", "real_part"]
         imag_names = ["i", "imag", "imaginary", "imaginary_part"]
+        R_key: str | None = None
+        I_key: str | None = None
+        F_key: str | None = None
         for key in self.data.keys():
             if any(name in key.lower() for name in freq_names):
                 F_key = key
@@ -318,25 +322,30 @@ class EISData:
     def plot_nyquist(
         self,
         axes: plt.Axes | None = None,
+        **plot_kwargs: Any,
     ) -> tuple[Figure, plt.Axes]:
         """Plot measured EIS on an existing subplot.
 
         This method reuses an existing axes instead of opening a new figure.
         """
         import matplotlib.pyplot as plt
+        from matplotlib.figure import Figure
 
         if axes is None:
             fig, axes = plt.subplots()
         else:
             fig = axes.figure
 
-        axes.plot(
-            self.data,
-            label="Nyquist",
-            marker="o",
-            marker_size=3,
-            linestyle="",
-        )
+        kwargs: dict[str, Any] = dict(plot_kwargs)
+        kwargs.setdefault("label", "Nyquist")
+        kwargs.setdefault("marker", "o")
+        kwargs.setdefault("markersize", 5)
+        kwargs.setdefault("linestyle", "")
+        kwargs.setdefault("color", "black")
+        kwargs.setdefault("markerfacecolor", "none")
+   
+
+        axes.plot(self.Real, -self.Imag, **kwargs)
         axes.set_xlabel(r"Z' [" + self.unit + "]")
         axes.set_ylabel(r"-Z'' [" + self.unit + "]")
         return cast(Figure, fig), axes

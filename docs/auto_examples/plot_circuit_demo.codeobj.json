@@ -140,64 +140,6 @@
    "name": "Artist.legend"
   }
  ],
- "ax.plot": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "matplotlib.axes._axes",
-   "module_short": "matplotlib.axes",
-   "name": "Axes.plot"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "matplotlib.axes",
-   "module_short": "matplotlib.axes",
-   "name": "Axes.plot"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "matplotlib",
-   "module_short": "matplotlib",
-   "name": "Axes.plot"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "matplotlib.axes._base",
-   "module_short": "matplotlib.axes._base",
-   "name": "_AxesBase.plot"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "matplotlib.axes",
-   "module_short": "matplotlib.axes",
-   "name": "_AxesBase.plot"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "matplotlib",
-   "module_short": "matplotlib",
-   "name": "_AxesBase.plot"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "matplotlib.artist",
-   "module_short": "matplotlib.artist",
-   "name": "Artist.plot"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "matplotlib",
-   "module_short": "matplotlib",
-   "name": "Artist.plot"
-  }
- ],
  "ax.set_title": [
   {
    "is_class": false,
@@ -297,24 +239,6 @@
    "name": "EISData"
   }
  ],
- "eis_data.Imag": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "numpy",
-   "module_short": "numpy",
-   "name": "ndarray"
-  }
- ],
- "eis_data.Real": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "numpy",
-   "module_short": "numpy",
-   "name": "ndarray"
-  }
- ],
  "eis_data.fit": [
   {
    "is_class": false,
@@ -336,6 +260,29 @@
    "module": "blowing_bubbles",
    "module_short": "blowing_bubbles",
    "name": "EISData.fit"
+  }
+ ],
+ "eis_data.plot_nyquist": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "blowing_bubbles.classes.data_classes",
+   "module_short": "blowing_bubbles.classes",
+   "name": "EISData.plot_nyquist"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "blowing_bubbles.classes",
+   "module_short": "blowing_bubbles.classes",
+   "name": "EISData.plot_nyquist"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "blowing_bubbles",
+   "module_short": "blowing_bubbles",
+   "name": "EISData.plot_nyquist"
   }
  ],
  "elapsed": [
