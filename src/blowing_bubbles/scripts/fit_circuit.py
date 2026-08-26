@@ -137,6 +137,9 @@ def fit_circuit(
     verbose: bool = False,
     seed: int | None = None,
     tau_bounds: tuple[float, float] | None = None,
+    resistance_source_bounds: tuple[float, float] | None = None,
+    resistance_branch_bounds: tuple[float, float] | None = None,
+    exponent_bounds: tuple[float, float] | None = None,
 ) -> FitResults:
     r"""Fit the R–CPE ladder with iterative fast branch building (IFBB).
 
@@ -165,7 +168,13 @@ def fit_circuit(
     seed : int, optional
         RNG seed for parameter perturbations between restarts.
     tau_bounds : tuple of float, optional
-        Bounds on :math:`\tau_i = R_i C_i` forwarded to the quick fitter.
+        Bounds on :math:`\tau_i = R_i C_i` forwarded to the fitter.
+    resistance_source_bounds : tuple of float, optional
+        ``(R_s_min, R_s_max)`` box bounds for the source resistance.
+    resistance_branch_bounds : tuple of float, optional
+        ``(R_min, R_max)`` uniform box bounds for all branch resistances.
+    exponent_bounds : tuple of float, optional
+        ``(e_min, e_max)`` uniform box bounds for all CPE exponents.
 
     Returns
     -------
@@ -196,6 +205,9 @@ def fit_circuit(
         sigma=0.5,
         initial_parameters=initial_parameters,
         tau_bounds=tau_bounds,
+        resistance_source_bounds=resistance_source_bounds,
+        resistance_branch_bounds=resistance_branch_bounds,
+        exponent_bounds=exponent_bounds,
     )
     if res is None:
         raise RuntimeError("Initial impedance fit did not converge.")
@@ -284,6 +296,9 @@ def fit_circuit(
                 initial_parameters=new_params,
                 sigma=0.1,
                 tau_bounds=tau_bounds,
+                resistance_source_bounds=resistance_source_bounds,
+                resistance_branch_bounds=resistance_branch_bounds,
+                exponent_bounds=exponent_bounds,
             )
             if res_new is not None and res_new.cost <= res.cost:
                 break

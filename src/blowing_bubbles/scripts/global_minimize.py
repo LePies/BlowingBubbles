@@ -291,6 +291,9 @@ def impendance_fit(
     constraint_tol: float = 1e-9,
     inductance_bounds: bool = True,
     inductance_margin: float = 2.0,
+    resistance_source_bounds: tuple[float, float] | None = None,
+    resistance_branch_bounds: tuple[float, float] | None = None,
+    exponent_bounds: tuple[float, float] | None = None,
 ) -> FitResults:
     r"""Bounded TRF least-squares fit of the equivalent circuit to ``data``.
 
@@ -342,6 +345,16 @@ def impendance_fit(
         :func:`estimate_inductance_from_imag`).
     inductance_margin : float
         Margin factor for ``L`` bounds from the slope estimate (default ``1.1``).
+    resistance_source_bounds : tuple of float, optional
+        ``(R_s_min, R_s_max)`` box bounds for the source resistance :math:`R_s`.
+        If ``None``, defaults to ``(0, \infty)``.
+    resistance_branch_bounds : tuple of float, optional
+        ``(R_min, R_max)`` uniform box bounds for all branch resistances.
+        If ``None``, defaults to ``(0, \infty)``.
+    exponent_bounds : tuple of float, optional
+        ``(e_min, e_max)`` uniform box bounds for all CPE exponents (branch and
+        inductance exponent). Only used when ``complex_fit=True``. Overrides
+        the default ``(0.2, 1.0)``. If ``None``, the default bounds are used.
 
     Returns
     -------
@@ -444,6 +457,32 @@ def impendance_fit(
         lower[1] = l_lo
         upper[1] = l_hi
         parameters_init[1] = np.clip(parameters_init[1], l_lo, l_hi)
+
+    # User-specified parameter bounds (override defaults if provided)
+    if resistance_source_bounds is not None:
+        rs_lo, rs_hi = resistance_source_bounds
+        lower[0] = max(lower[0], rs_lo)
+        upper[0] = min(upper[0], rs_hi)
+        parameters_init[0] = np.clip(parameters_init[0], rs_lo, rs_hi)
+
+    if resistance_branch_bounds is not None:
+        r_lo, r_hi = resistance_branch_bounds
+        lower[r_slice] = np.maximum(lower[r_slice], r_lo)
+        upper[r_slice] = np.minimum(upper[r_slice], r_hi)
+        parameters_init[r_slice] = np.clip(
+            parameters_init[r_slice], r_lo, r_hi
+        )
+
+    if exponent_bounds is not None and complex_fit:
+        exp_lo, exp_hi = exponent_bounds
+        lower[2] = exp_lo
+        upper[2] = exp_hi
+        parameters_init[2] = np.clip(parameters_init[2], exp_lo, exp_hi)
+        lower[e_slice] = exp_lo
+        upper[e_slice] = exp_hi
+        parameters_init[e_slice] = np.clip(
+            parameters_init[e_slice], exp_lo, exp_hi
+        )
 
     scipy_bounds = Bounds(lower, upper)
     linear_constraint = _build_center_linear_constraint(

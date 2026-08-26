@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 import pandas as pd
 
-from blowing_bubbles.classes.circuit_classes import FitResults
+from blowing_bubbles.classes.circuit_classes import CircuitParameters, FitResults
 
 
 class EISData:
@@ -35,7 +35,12 @@ class EISData:
         : Fitted branch parameters
     """
 
-    def __init__(self, data_set: pd.DataFrame) -> None:
+    def __init__(
+            self,
+            data_set: pd.DataFrame,
+            area: float | None = None,
+            unit: str = "Ohm"
+        ) -> None:
         """
         Initialize EIS data.
 
@@ -44,6 +49,8 @@ class EISData:
         data_set : pd.DataFrame
             DataFrame containing EIS data with frequency, real, and
             imaginary impedance columns
+        area : float
+            Electrode area for normalization (default: 1.0)
 
         Returns
         -------
@@ -61,18 +68,15 @@ class EISData:
         self.Rs = self.find_Rs()[0]
         self.Rtot = self.find_Rtot()[0]
         self.Rp = self.find_Rp()[0]
-        self.normalized = "NO"
-        self.normalization_area = 1
-        self.norm_unit = ""
-        self.unit = ""
+        self.normalization_area = area
+        self.unit = unit
 
     @classmethod
     def from_csv(
         cls,
         path_to_data: str,
-        normalized: bool = False,
         area: float | None = None,
-        norm_unit: str = "",
+        unit: str = "Ohm",
         comment=None,
         delimiter=",",
         engine="python",
@@ -87,12 +91,10 @@ class EISData:
         ----------
         path_to_data : str
             Path to the CSV file
-        normalized : bool
-            Whether to normalize data by area, by default False
         area : float
             Area normalization factor (e.g., cm²)
-        norm_unit : str
-            Unit for normalized data (e.g., "Ω·cm²")
+        unit : str
+            Unit for the data (e.g., "Ohm")
 
         Returns
         -------
@@ -109,12 +111,11 @@ class EISData:
             delimiter=delimiter,
             engine=engine,
         )
-        eis_data = EISData(frame)
-        if normalized:
-            if area is None:
-                raise ValueError("area is required when normalized=True")
-            eis_data.normalize(area, norm_unit)
-        return eis_data
+        return EISData(
+            frame,
+            area=area,
+            unit=unit
+        )
 
     def __add__(self, other: EISData) -> EISData:
         data_temp = self.data.copy()
@@ -358,6 +359,9 @@ class EISData:
         verbose: bool = False,
         seed: int | None = None,
         tau_bounds: tuple[float, float] | None = None,
+        resistance_source_bounds: tuple[float, float] | None = None,
+        resistance_branch_bounds: tuple[float, float] | None = None,
+        exponent_bounds: tuple[float, float] | None = None,
     ) -> FitResults:
         r"""Fit the parametric R–CPE ladder to this spectrum.
 
@@ -376,6 +380,12 @@ class EISData:
             RNG seed for fit restarts.
         tau_bounds : tuple of float, optional
             Bounds on branch time constants :math:`\tau_i = R_i C_i`.
+        resistance_source_bounds : tuple of float, optional
+            Bounds on source resistance :math:`R_s`.
+        resistance_branch_bounds : tuple of float, optional
+            Bounds on branch resistances :math:`R_i`.
+        exponent_bounds : tuple of float, optional
+            Bounds on CPE exponents :math:`\alpha_i` and :math:`\beta`.
 
         Returns
         -------
@@ -392,6 +402,9 @@ class EISData:
             seed=seed,
             tau_bounds=tau_bounds,
             initial_peaks=initial_peaks,
+            resistance_source_bounds=resistance_source_bounds,
+            resistance_branch_bounds=resistance_branch_bounds,
+            exponent_bounds=exponent_bounds
         )
 
         return res
@@ -435,6 +448,58 @@ class EISData:
         self.Freq = self.Freq[cut_index]
         self.data = self.data.iloc[cut_index]
 
+    def quick_fit(
+        self,
+        initial_parameters: CircuitParameters,
+        complex_fit: bool = True,
+        seed: int | None = None,
+        sigma: float = 0.5,
+        tau_bounds: tuple[float, float] | None = None,
+        penalty_margin_weight: float = 1.0,
+        penalty_weight: float | None = None,
+        z_margin_frac: float = 0.05,
+        z_margin_abs: float = 0.0,
+        max_nfev: int | None = None,
+        polish: bool = True,
+        polish_maxiter: int = 50,
+        constraint_tol: float = 1e-9,
+        inductance_bounds: bool = True,
+        inductance_margin: float = 2.0,
+        resistance_source_bounds: tuple[float, float] | None = None,
+        resistance_branch_bounds: tuple[float, float] | None = None,
+        exponent_bounds: tuple[float, float] | None = None
+    ) -> FitResults:
+        r"""Quick fit of the parametric R–CPE ladder to this spectrum.
+
+        Calls :func:`~blowing_bubbles.classes.data_classes.quick_fit`
+        (global optimization).
+    
+        """
+
+        return quick_fit(
+            data = self,
+            n_restarts = 1,
+            initial_parameters = initial_parameters,
+            n_groups = len(initial_parameters.resistances),
+            complex_fit = complex_fit,
+            seed = seed,
+            sigma = sigma,
+            tau_bounds = tau_bounds,
+            penalty_margin_weight = penalty_margin_weight,
+            penalty_weight = penalty_weight,
+            z_margin_frac = z_margin_frac,
+            z_margin_abs = z_margin_abs,
+            max_nfev = max_nfev,
+            polish = polish,
+            polish_maxiter = polish_maxiter,
+            constraint_tol = constraint_tol,
+            inductance_bounds = inductance_bounds,
+            inductance_margin = inductance_margin,
+            resistance_source_bounds = resistance_source_bounds,
+            resistance_branch_bounds = resistance_branch_bounds,
+            exponent_bounds = exponent_bounds
+        )
+
 
 def fit_circuit(
     data: EISData,
@@ -445,6 +510,9 @@ def fit_circuit(
     verbose: bool = False,
     seed: int | None = None,
     tau_bounds: tuple[float, float] | None = None,
+    resistance_source_bounds: tuple[float, float] | None = None,
+    resistance_branch_bounds: tuple[float, float] | None = None,
+    exponent_bounds: tuple[float, float] | None = None,
 ) -> FitResults:
     """Fit an R–CPE ladder to *data* using iterative fast branch building."""
     from blowing_bubbles.scripts.fit_circuit import fit_circuit as _run_fit
@@ -457,4 +525,57 @@ def fit_circuit(
         verbose=verbose,
         seed=seed,
         tau_bounds=tau_bounds,
+        resistance_source_bounds=resistance_source_bounds,
+        resistance_branch_bounds=resistance_branch_bounds,
+        exponent_bounds=exponent_bounds
+    )
+
+def quick_fit(
+    data: EISData,
+    n_groups: int = 2,
+    complex_fit: bool = False,
+    initial_parameters: CircuitParameters | None = None,
+    n_restarts: int = 1,
+    seed: int | None = None,
+    sigma: float = 0.5,
+    tau_bounds: tuple[float, float] | None = None,
+    penalty_margin_weight: float = 1.0,
+    penalty_weight: float | None = None,
+    z_margin_frac: float = 0.05,
+    z_margin_abs: float = 0.0,
+    max_nfev: int | None = None,
+    polish: bool = True,
+    polish_maxiter: int = 50,
+    constraint_tol: float = 1e-9,
+    inductance_bounds: bool = True,
+    inductance_margin: float = 2.0,
+    resistance_source_bounds: tuple[float, float] | None = None,
+    resistance_branch_bounds: tuple[float, float] | None = None,
+    exponent_bounds: tuple[float, float] | None = None,
+) -> FitResults:
+    """Quick fit of an R–CPE ladder to *data* using default parameters."""
+    from blowing_bubbles.scripts.global_minimize import impendance_fit as _run_quick_fit
+
+    return _run_quick_fit(
+        data = data,
+        n_groups = n_groups,
+        complex_fit = complex_fit,
+        initial_parameters = initial_parameters,
+        n_restarts = n_restarts,
+        seed = seed,
+        sigma = sigma,
+        tau_bounds = tau_bounds,
+        penalty_margin_weight = penalty_margin_weight,
+        penalty_weight = penalty_weight,
+        z_margin_frac = z_margin_frac,
+        z_margin_abs = z_margin_abs,
+        max_nfev = max_nfev,
+        polish = polish,
+        polish_maxiter = polish_maxiter,
+        constraint_tol = constraint_tol,
+        inductance_bounds = inductance_bounds,
+        inductance_margin = inductance_margin,
+        resistance_source_bounds = resistance_source_bounds,
+        resistance_branch_bounds = resistance_branch_bounds,
+        exponent_bounds = exponent_bounds
     )
