@@ -35,6 +35,23 @@ build the documentation; outputs appear in the gallery below.
     </div>
 
 
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="Demonstrate fine-tuning of EIS circuit parameters using quick_fit and the standalone quick_fit function.">
+
+.. only:: html
+
+  .. image:: /auto_examples/images/thumb/sphx_glr_quick_fit_demo_thumb.png
+    :alt:
+
+  :doc:`/auto_examples/quick_fit_demo`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Quick Fitting Demo</div>
+    </div>
+
+
 .. thumbnail-parent-div-close
 
 .. raw:: html
@@ -46,6 +63,7 @@ build the documentation; outputs appear in the gallery below.
    :hidden:
 
    /auto_examples/plot_circuit_demo
+   /auto_examples/quick_fit_demo
 
 
 .. only:: html
