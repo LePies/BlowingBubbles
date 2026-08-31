@@ -107,7 +107,7 @@ python research/convert_all_datasets.py
 python research/analyze_real_data.py
 ```
 - Loads all CSV files from `research/data/processed/`
-- Fits each spectrum with **3 R-CPE branches** using **50 restarts**
+- Fits each spectrum with **up to 5 R-CPE branches** using **50 restarts**
 - Generates Nyquist plots with data + fit overlay
 - Saves results to `research/results/`
 - Creates summary files (JSON and Markdown)
@@ -148,7 +148,7 @@ python research/test_synthetic_cases.py
 **Key Findings:**
 - SOFC data fits extremely well (cost ~1e-7 to 1e-6)
 - SOEC data fits well (cost ~1e-5 to 1e-3)
-- All fits completed successfully with 3 R-CPE branches
+- All fits completed successfully with up to 5 R-CPE branches
 - Higher frequency resolution in SOFC data (210 vs 88-110 points)
 - **Note**: These datasets don't have known true parameters, so we can't validate parameter recovery
 
@@ -173,6 +173,52 @@ See `research/results/analysis_summary.md` for detailed results.
 - **Note**: Case 1 parameters were modified to ensure good τ separation for identifiability
 
 See `research/results/synthetic/test_results_summary.md` for detailed results.
+
+## Sample Plots
+
+### Synthetic Data: Parameter Recovery Validation
+
+These plots show the algorithm's ability to recover known parameters from noisy synthetic data.
+
+#### Case 1: Mutter et al. 2026 - 3 RC Branches
+![Case 1 Comparison](results/synthetic/case1_mutter_2026_steam_electrolysis_comparison.png)
+- **True parameters**: 3 R-CPE branches
+- **Fit result**: R error < 1%, C error < 1%, Exp error < 0.001
+- Shows data (blue), true model (green), and fitted model (red dashed)
+
+#### Case 2a: Boškoski et al. 2024 - Condition 1 (20% H₂)
+![Case 2a Comparison](results/synthetic/case2a_boskoski_2024_condition1_20pct_H2_comparison.png)
+- **True parameters**: 2 R-CPE branches
+- **Fit result**: R error < 9%, C error < 8%, Exp error < 0.005
+
+#### Case 2b: Boškoski et al. 2024 - Condition 2 (10% H₂)
+![Case 2b Comparison](results/synthetic/case2b_boskoski_2024_condition2_10pct_H2_comparison.png)
+- **True parameters**: 2 R-CPE branches
+- **Fit result**: R error < 1%, C error < 1%, Exp error < 0.001
+
+#### Case 2c: Boškoski et al. 2024 - Condition 3 (900 mA, unstable)
+![Case 2c Comparison](results/synthetic/case2c_boskoski_2024_condition3_900mA_comparison.png)
+- **True parameters**: 2 R-CPE branches
+- **Fit result**: R error < 10%, C error < 6%, Exp error < 0.01
+- Higher noise level (σ = 0.7 mΩ·cm²) to simulate unstable conditions
+
+### Real Data: Algorithm Demonstration
+
+These plots demonstrate the algorithm working on actual published EIS measurements.
+
+#### SOFC Stack Monitoring (Dataset 1)
+![SOFC Spectrum 0](results/sofc_stack_spectrum_0000_fit.png)
+- **Data**: Real SOFC stack monitoring from Gorenc et al. 2026
+- **Frequency points**: 210
+- **Fit quality**: Cost ~1.4e-7 (excellent)
+
+#### SOEC Operating Conditions (Dataset 2)
+![SOEC Spectrum 0](results/soec_operating_conditions_0000_fit.png)
+- **Data**: Real SOEC operating condition study from Gorenc et al. 2026
+- **Frequency points**: 110
+- **Fit quality**: Cost ~5.2e-3 (good)
+
+**Note**: Real data plots show data (blue) overlaid with the fitted model. Since true parameters are not available for these datasets, we can only validate the fit quality (cost), not parameter recovery.
 
 ## Data Format
 
@@ -214,4 +260,8 @@ To add Dataset 3 or additional data:
 
 ## Historical Note
 
-This directory previously contained synthetic test data generated from published parameters (Mutter et al. 2026, Boškoski et al. 2024). That data has been removed and replaced with **real original EIS data** from the Gorenc et al. datasets, as requested by the user.
+This directory now contains **both real and synthetic data**:
+- **Real data**: From Gorenc et al. 2026 (SOFC/SOEC measurements) - for demonstration
+- **Synthetic data**: Based on published parameters (Mutter et al. 2026, Boškoski et al. 2024) - for quantitative validation with known ground truth
+
+The combination provides both qualitative demonstration (real data) and quantitative validation (synthetic data) of the BlowingBubbles fitting algorithm.
