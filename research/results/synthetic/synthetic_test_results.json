@@ -1,0 +1,362 @@
+[
+  {
+    "case_name": "case1_mutter_2026_steam_electrolysis",
+    "success": true,
+    "cost": 1.3531162220622412e-05,
+    "elapsed_time": 5.472585439682007,
+    "n_data_points": 80,
+    "true_rc_branches": 3,
+    "fitted_rc_branches": 3,
+    "metrics": {
+      "rs_error_abs": 0.00036485237472050347,
+      "rs_error_rel": 0.13030441954303693,
+      "l_error_abs": 1.5888866001212668e-09,
+      "l_error_rel": 1.3240721667677224,
+      "le_error_abs": 0.0017841374203516613,
+      "r_errors_abs": [
+        0.002284113572600832,
+        0.0041873831085336155,
+        0.006157674611176278
+      ],
+      "r_errors_rel": [
+        0.19861857153050713,
+        0.5106564766504409,
+        1.3683721358169507
+      ],
+      "c_errors_abs": [
+        3.910800950625954e-06,
+        3.4831808972016036e-06,
+        2.6683637029994295e-05
+      ],
+      "c_errors_rel": [
+        1.2221252970706107,
+        0.2902650747668003,
+        0.5336727405998859
+      ],
+      "exp_errors_abs": [
+        0.001185248764784208,
+        0.000987142259639584,
+        0.0022552473920389726
+      ],
+      "r_error_avg_rel": 0.6925490613326328,
+      "c_error_avg_rel": 0.682021037479099,
+      "exp_error_avg_abs": 0.001475879472154255
+    },
+    "true_parameters": {
+      "case_name": "case1_mutter_2026_steam_electrolysis",
+      "resistance_source": 0.28,
+      "inductance": 1.2e-07,
+      "inductance_exponent": 0.95,
+      "resistances": [
+        1.15,
+        0.82,
+        0.45
+      ],
+      "capacitances": [
+        0.00032,
+        0.0012,
+        0.005
+      ],
+      "exponents": [
+        0.78,
+        0.91,
+        0.89
+      ],
+      "taus": [
+        0.000368,
+        0.0009839999999999998,
+        0.0022500000000000003
+      ],
+      "metadata": {
+        "source": "Mutter et al. 2026, Journal of Power Sources",
+        "doi": "10.1016/j.jpowsour.2026.239640",
+        "temperature_c": 750,
+        "current_density_mA_per_cm2": 300,
+        "gas_composition": "90% H2O, 10% H2",
+        "cell_type": "Commercial 4x4 cm2 electrolyte-supported",
+        "operation": "Steam electrolysis"
+      }
+    },
+    "fitted_parameters": {
+      "resistance_source": 0.28036485237472053,
+      "inductance": 1.2158888660012126e-07,
+      "inductance_exponent": 0.9482158625796483,
+      "resistances": [
+        1.147715886427399,
+        0.8158126168914663,
+        0.4561576746111763
+      ],
+      "capacitances": [
+        0.00031608919904937407,
+        0.0011965168191027983,
+        0.004973316362970006
+      ],
+      "exponents": [
+        0.7811852487647842,
+        0.9109871422596396,
+        0.887744752607961
+      ]
+    }
+  },
+  {
+    "case_name": "case2a_boskoski_2024_condition1_20pct_H2",
+    "success": true,
+    "cost": 1.3792723318936584e-05,
+    "elapsed_time": 2.4647059440612793,
+    "n_data_points": 80,
+    "true_rc_branches": 2,
+    "fitted_rc_branches": 2,
+    "metrics": {
+      "rs_error_abs": 0.00031441514039629026,
+      "rs_error_rel": 0.1257660561585161,
+      "l_error_abs": 1.7537711496565527e-08,
+      "l_error_rel": 21.92213937070691,
+      "le_error_abs": 0.015100681922987191,
+      "r_errors_abs": [
+        0.047579306363988105,
+        0.04722247485445791
+      ],
+      "r_errors_rel": [
+        5.597565454586836,
+        11.24344639391855
+      ],
+      "c_errors_abs": [
+        1.8129630013320134e-05,
+        0.0011762091765871712
+      ],
+      "c_errors_rel": [
+        0.8633157149200065,
+        13.8377550186726
+      ],
+      "exp_errors_abs": [
+        0.0022922042197808246,
+        0.004902529554898449
+      ],
+      "r_error_avg_rel": 8.420505924252693,
+      "c_error_avg_rel": 7.350535366796303,
+      "exp_error_avg_abs": 0.003597366887339637
+    },
+    "true_parameters": {
+      "case_name": "case2a_boskoski_2024_condition1_20pct_H2",
+      "resistance_source": 0.25,
+      "inductance": 8e-08,
+      "inductance_exponent": 0.92,
+      "resistances": [
+        0.85,
+        0.42
+      ],
+      "capacitances": [
+        0.0021,
+        0.0085
+      ],
+      "exponents": [
+        0.85,
+        0.88
+      ],
+      "taus": [
+        0.001785,
+        0.0035700000000000003
+      ],
+      "metadata": {
+        "source": "Boskoski et al. 2024, PHM Society Conference",
+        "doi": "10.36001/phmconf.2024.v16i1.4057",
+        "temperature_c": 800,
+        "current_density_mA_per_cm2": 700,
+        "gas_composition": "20% H2 (balance H2O)",
+        "cell_type": "Industrial-scale 100 cm2 SOEC",
+        "condition": "Condition 1"
+      }
+    },
+    "fitted_parameters": {
+      "resistance_source": 0.2496855848596037,
+      "inductance": 9.753771149656553e-08,
+      "inductance_exponent": 0.9048993180770128,
+      "resistances": [
+        0.8975793063639881,
+        0.3727775251455421
+      ],
+      "capacitances": [
+        0.0020818703699866797,
+        0.009676209176587172
+      ],
+      "exponents": [
+        0.8477077957802192,
+        0.8849025295548985
+      ]
+    }
+  },
+  {
+    "case_name": "case2b_boskoski_2024_condition2_10pct_H2",
+    "success": true,
+    "cost": 2.0709748352316003e-05,
+    "elapsed_time": 2.3088674545288086,
+    "n_data_points": 80,
+    "true_rc_branches": 2,
+    "fitted_rc_branches": 2,
+    "metrics": {
+      "rs_error_abs": 0.00040069527845637554,
+      "rs_error_rel": 0.15120576545523604,
+      "l_error_abs": 3.622120515404946e-08,
+      "l_error_rel": 48.29494020539928,
+      "le_error_abs": 0.05290361275107647,
+      "r_errors_abs": [
+        0.0033489488109704757,
+        0.002893852029485
+      ],
+      "r_errors_rel": [
+        0.3640161751054865,
+        0.6028858394760417
+      ],
+      "c_errors_abs": [
+        4.988692367446403e-06,
+        5.0778572652270676e-05
+      ],
+      "c_errors_rel": [
+        0.27714957596924455,
+        0.5519410070898987
+      ],
+      "exp_errors_abs": [
+        0.0005948583139179231,
+        0.00036967995781311824
+      ],
+      "r_error_avg_rel": 0.48345100729076407,
+      "c_error_avg_rel": 0.41454529152957165,
+      "exp_error_avg_abs": 0.00048226913586552067
+    },
+    "true_parameters": {
+      "case_name": "case2b_boskoski_2024_condition2_10pct_H2",
+      "resistance_source": 0.265,
+      "inductance": 7.5e-08,
+      "inductance_exponent": 0.9,
+      "resistances": [
+        0.92,
+        0.48
+      ],
+      "capacitances": [
+        0.0018,
+        0.0092
+      ],
+      "exponents": [
+        0.82,
+        0.86
+      ],
+      "taus": [
+        0.001656,
+        0.004416
+      ],
+      "metadata": {
+        "source": "Boskoski et al. 2024, PHM Society Conference",
+        "doi": "10.36001/phmconf.2024.v16i1.4057",
+        "temperature_c": 800,
+        "current_density_mA_per_cm2": 700,
+        "gas_composition": "10% H2 (balance H2O)",
+        "cell_type": "Industrial-scale 100 cm2 SOEC",
+        "condition": "Condition 2"
+      }
+    },
+    "fitted_parameters": {
+      "resistance_source": 0.2654006952784564,
+      "inductance": 3.877879484595054e-08,
+      "inductance_exponent": 0.9529036127510765,
+      "resistances": [
+        0.9166510511890296,
+        0.482893852029485
+      ],
+      "capacitances": [
+        0.0017950113076325535,
+        0.00914922142734773
+      ],
+      "exponents": [
+        0.8205948583139179,
+        0.8596303200421869
+      ]
+    }
+  },
+  {
+    "case_name": "case2c_boskoski_2024_condition3_900mA",
+    "success": true,
+    "cost": 4.0905850930272156e-05,
+    "elapsed_time": 3.0981156826019287,
+    "n_data_points": 80,
+    "true_rc_branches": 2,
+    "fitted_rc_branches": 2,
+    "metrics": {
+      "rs_error_abs": 0.00037403740149619114,
+      "rs_error_rel": 0.162624957172257,
+      "l_error_abs": 1.7417592823966883e-08,
+      "l_error_rel": 19.35288091551876,
+      "le_error_abs": 0.013056345682859294,
+      "r_errors_abs": [
+        0.04749669171145343,
+        0.0469682058663361
+      ],
+      "r_errors_rel": [
+        6.089319450186338,
+        13.419487390381743
+      ],
+      "c_errors_abs": [
+        2.0413539800600428e-05,
+        0.0007523152421887742
+      ],
+      "c_errors_rel": [
+        0.8165415920240171,
+        9.645067207548387
+      ],
+      "exp_errors_abs": [
+        0.0034781698336658895,
+        0.014916503050292795
+      ],
+      "r_error_avg_rel": 9.75440342028404,
+      "c_error_avg_rel": 5.2308043997862015,
+      "exp_error_avg_abs": 0.009197336441979342
+    },
+    "true_parameters": {
+      "case_name": "case2c_boskoski_2024_condition3_900mA",
+      "resistance_source": 0.23,
+      "inductance": 9e-08,
+      "inductance_exponent": 0.94,
+      "resistances": [
+        0.78,
+        0.35
+      ],
+      "capacitances": [
+        0.0025,
+        0.0078
+      ],
+      "exponents": [
+        0.8,
+        0.9
+      ],
+      "taus": [
+        0.0019500000000000001,
+        0.00273
+      ],
+      "metadata": {
+        "source": "Boskoski et al. 2024, PHM Society Conference",
+        "doi": "10.36001/phmconf.2024.v16i1.4057",
+        "temperature_c": 800,
+        "current_density_mA_per_cm2": 900,
+        "gas_composition": "Variable (unstable steam supply)",
+        "cell_type": "Industrial-scale 100 cm2 SOEC",
+        "condition": "Condition 3"
+      }
+    },
+    "fitted_parameters": {
+      "resistance_source": 0.22962596259850382,
+      "inductance": 1.0741759282396688e-07,
+      "inductance_exponent": 0.9269436543171407,
+      "resistances": [
+        0.8274966917114535,
+        0.3030317941336639
+      ],
+      "capacitances": [
+        0.0025204135398006005,
+        0.008552315242188774
+      ],
+      "exponents": [
+        0.7965218301663342,
+        0.9149165030502928
+      ]
+    }
+  }
+]

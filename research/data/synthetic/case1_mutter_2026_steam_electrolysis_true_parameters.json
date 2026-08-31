@@ -1,0 +1,35 @@
+{
+  "case_name": "case1_mutter_2026_steam_electrolysis",
+  "resistance_source": 0.28,
+  "inductance": 1.2e-07,
+  "inductance_exponent": 0.95,
+  "resistances": [
+    1.15,
+    0.82,
+    0.45
+  ],
+  "capacitances": [
+    0.00032,
+    0.0012,
+    0.005
+  ],
+  "exponents": [
+    0.78,
+    0.91,
+    0.89
+  ],
+  "taus": [
+    0.000368,
+    0.0009839999999999998,
+    0.0022500000000000003
+  ],
+  "metadata": {
+    "source": "Mutter et al. 2026, Journal of Power Sources",
+    "doi": "10.1016/j.jpowsour.2026.239640",
+    "temperature_c": 750,
+    "current_density_mA_per_cm2": 300,
+    "gas_composition": "90% H2O, 10% H2",
+    "cell_type": "Commercial 4x4 cm2 electrolyte-supported",
+    "operation": "Steam electrolysis"
+  }
+}

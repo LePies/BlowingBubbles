@@ -1,0 +1,31 @@
+{
+  "case_name": "case2c_boskoski_2024_condition3_900mA",
+  "resistance_source": 0.23,
+  "inductance": 9e-08,
+  "inductance_exponent": 0.94,
+  "resistances": [
+    0.78,
+    0.35
+  ],
+  "capacitances": [
+    0.0025,
+    0.0078
+  ],
+  "exponents": [
+    0.8,
+    0.9
+  ],
+  "taus": [
+    0.0019500000000000001,
+    0.00273
+  ],
+  "metadata": {
+    "source": "Boskoski et al. 2024, PHM Society Conference",
+    "doi": "10.36001/phmconf.2024.v16i1.4057",
+    "temperature_c": 800,
+    "current_density_mA_per_cm2": 900,
+    "gas_composition": "Variable (unstable steam supply)",
+    "cell_type": "Industrial-scale 100 cm2 SOEC",
+    "condition": "Condition 3"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "case_name": "case2b_boskoski_2024_condition2_10pct_H2",
+  "resistance_source": 0.265,
+  "inductance": 7.5e-08,
+  "inductance_exponent": 0.9,
+  "resistances": [
+    0.92,
+    0.48
+  ],
+  "capacitances": [
+    0.0018,
+    0.0092
+  ],
+  "exponents": [
+    0.82,
+    0.86
+  ],
+  "taus": [
+    0.001656,
+    0.004416
+  ],
+  "metadata": {
+    "source": "Boskoski et al. 2024, PHM Society Conference",
+    "doi": "10.36001/phmconf.2024.v16i1.4057",
+    "temperature_c": 800,
+    "current_density_mA_per_cm2": 700,
+    "gas_composition": "10% H2 (balance H2O)",
+    "cell_type": "Industrial-scale 100 cm2 SOEC",
+    "condition": "Condition 2"
+  }
+}

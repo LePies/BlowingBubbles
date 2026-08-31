@@ -1,0 +1,142 @@
+[
+  {
+    "file": "soec_operating_conditions_0000.csv",
+    "success": true,
+    "cost": 0.005232436812300618,
+    "elapsed_time": 2.160120964050293,
+    "parameters": "  Resistance Source:        4.7828e-02\n  Inductance:               5.2354e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [7.8303e-03 1.8710e-02 1.7251e-32]\n  Capacitances:           [3.7803e-01 1.9473e+00 1.4019e+33]\n  Exponents:              [8.7544e-01 1.0000e+00 2.0000e-01]\n  Taus:                   [2.9601e-03 3.6434e-02 2.4185e+01]\n",
+    "n_data_points": 110,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "soec_operating_conditions_0050.csv",
+    "success": true,
+    "cost": 0.0001616013878419505,
+    "elapsed_time": 4.935194492340088,
+    "parameters": "  Resistance Source:        4.6145e-02\n  Inductance:               6.8879e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [4.1609e-03 5.2570e-03 1.3008e-02]\n  Capacitances:           [3.2735e-01 5.4503e-01 2.2652e+00]\n  Exponents:              [8.2517e-01 1.0000e+00 1.0000e+00]\n  Taus:                   [1.3621e-03 2.8652e-03 2.9465e-02]\n",
+    "n_data_points": 110,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "soec_operating_conditions_0100.csv",
+    "success": true,
+    "cost": 6.197707658071012e-06,
+    "elapsed_time": 12.590017080307007,
+    "parameters": "  Resistance Source:        4.5520e-02\n  Inductance:               7.3799e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [1.6462e-03 6.9312e-03 1.3928e-02]\n  Capacitances:           [3.4427e+00 4.9442e+00 3.2288e+00]\n  Exponents:              [1.0000e+00 1.0000e+00 5.3622e-01]\n  Taus:                   [5.6674e-03 3.4269e-02 4.4969e-02]\n",
+    "n_data_points": 88,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "soec_operating_conditions_0150.csv",
+    "success": true,
+    "cost": 1.611768077455215e-05,
+    "elapsed_time": 4.847087860107422,
+    "parameters": "  Resistance Source:        4.5063e-02\n  Inductance:               7.0274e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [5.6924e-03 6.1970e-03 1.3249e-02]\n  Capacitances:           [3.7940e-01 7.9208e-01 3.4547e+00]\n  Exponents:              [8.0646e-01 9.2484e-01 1.0000e+00]\n  Taus:                   [2.1597e-03 4.9085e-03 4.5772e-02]\n",
+    "n_data_points": 110,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "soec_operating_conditions_0200.csv",
+    "success": true,
+    "cost": 2.041062102397481e-05,
+    "elapsed_time": 1.4569556713104248,
+    "parameters": "  Resistance Source:        4.9008e-02\n  Inductance:               7.8936e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [1.5237e-02 1.2843e-02 3.7441e-28]\n  Capacitances:           [7.3336e-01 3.5998e+00 2.2920e+30]\n  Exponents:              [6.9459e-01 1.0000e+00 1.0000e+00]\n  Taus:                   [1.1174e-02 4.6232e-02 8.5817e+02]\n",
+    "n_data_points": 110,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "soec_operating_conditions_0250.csv",
+    "success": true,
+    "cost": 1.7900167454116282e-05,
+    "elapsed_time": 3.3951170444488525,
+    "parameters": "  Resistance Source:        4.8697e-02\n  Inductance:               7.9956e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [8.2981e-03 5.5158e-03 1.1637e-02]\n  Capacitances:           [3.4328e-01 7.8116e-01 4.1615e+00]\n  Exponents:              [7.7894e-01 9.5394e-01 1.0000e+00]\n  Taus:                   [2.8485e-03 4.3088e-03 4.8426e-02]\n",
+    "n_data_points": 105,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "soec_operating_conditions_0300.csv",
+    "success": true,
+    "cost": 2.2040508902969396e-05,
+    "elapsed_time": 3.4576303958892822,
+    "parameters": "  Resistance Source:        5.1684e-02\n  Inductance:               8.1016e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [8.5698e-03 6.2970e-03 9.6197e-03]\n  Capacitances:           [2.3363e-01 5.4043e-01 4.2821e+00]\n  Exponents:              [8.2085e-01 9.7878e-01 1.0000e+00]\n  Taus:                   [2.0022e-03 3.4031e-03 4.1192e-02]\n",
+    "n_data_points": 110,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "sofc_stack_spectrum_0000.csv",
+    "success": true,
+    "cost": 1.4178646192322976e-07,
+    "elapsed_time": 3.0696699619293213,
+    "parameters": "  Resistance Source:        3.3295e-03\n  Inductance:               1.4570e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [7.6074e-04 3.0029e-03 5.3768e-04]\n  Capacitances:           [3.0814e+01 4.6285e+01 1.7332e+03]\n  Exponents:              [6.3149e-01 1.0000e+00 9.9142e-01]\n  Taus:                   [2.3441e-02 1.3899e-01 9.3190e-01]\n",
+    "n_data_points": 210,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "sofc_stack_spectrum_0100.csv",
+    "success": true,
+    "cost": 2.648254708383599e-06,
+    "elapsed_time": 2.1133737564086914,
+    "parameters": "  Resistance Source:        3.0088e-03\n  Inductance:               2.9786e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [5.3551e-04 8.3155e-03 5.3377e-03]\n  Capacitances:           [2.4726e+01 4.5591e+01 3.5921e+02]\n  Exponents:              [7.0268e-01 9.8896e-01 1.0000e+00]\n  Taus:                   [1.3241e-02 3.7911e-01 1.9174e+00]\n",
+    "n_data_points": 210,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "sofc_stack_spectrum_0200.csv",
+    "success": true,
+    "cost": 3.512570694120486e-07,
+    "elapsed_time": 4.772760391235352,
+    "parameters": "  Resistance Source:        3.7245e-03\n  Inductance:               2.8796e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [4.8559e-04 5.4049e-03 1.8609e-03]\n  Capacitances:           [1.4971e+01 4.2899e+01 7.0197e+02]\n  Exponents:              [7.6773e-01 1.0000e+00 1.0000e+00]\n  Taus:                   [7.2696e-03 2.3187e-01 1.3063e+00]\n",
+    "n_data_points": 210,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "sofc_stack_spectrum_0300.csv",
+    "success": true,
+    "cost": 3.541058068594664e-07,
+    "elapsed_time": 4.992960453033447,
+    "parameters": "  Resistance Source:        4.1773e-03\n  Inductance:               3.8631e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [6.2054e-04 6.1568e-03 1.9452e-03]\n  Capacitances:           [1.8838e+01 4.0466e+01 7.1966e+02]\n  Exponents:              [6.7498e-01 1.0000e+00 1.0000e+00]\n  Taus:                   [1.1690e-02 2.4915e-01 1.3999e+00]\n",
+    "n_data_points": 210,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "sofc_stack_spectrum_0400.csv",
+    "success": true,
+    "cost": 7.250378600272577e-06,
+    "elapsed_time": 2.674531936645508,
+    "parameters": "  Resistance Source:        4.4489e-03\n  Inductance:               3.4786e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [4.0469e-04 8.3422e-03 1.0848e-39]\n  Capacitances:           [5.8367e+00 4.3537e+01 7.2497e+38]\n  Exponents:              [8.8657e-01 9.4339e-01 2.0588e-01]\n  Taus:                   [2.3621e-03 3.6319e-01 7.8643e-01]\n",
+    "n_data_points": 210,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "sofc_stack_spectrum_0500.csv",
+    "success": true,
+    "cost": 5.05519421455249e-07,
+    "elapsed_time": 8.531948328018188,
+    "parameters": "  Resistance Source:        4.8719e-03\n  Inductance:               4.5153e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [5.8322e-04 5.7076e-03 3.0061e-03]\n  Capacitances:           [1.2722e+01 4.3038e+01 4.7853e+02]\n  Exponents:              [7.4691e-01 1.0000e+00 8.6518e-01]\n  Taus:                   [7.4198e-03 2.4565e-01 1.4385e+00]\n",
+    "n_data_points": 210,
+    "rc_groups": 3,
+    "n_restarts": 50
+  },
+  {
+    "file": "sofc_stack_spectrum_0600.csv",
+    "success": true,
+    "cost": 1.661965461495849e-06,
+    "elapsed_time": 13.961838245391846,
+    "parameters": "  Resistance Source:        5.3984e-03\n  Inductance:               5.1289e-08\n  Inductance Exponent:      1.0000e+00\n  Resistances:            [5.8341e-04 5.8608e-03 2.2638e-03]\n  Capacitances:           [1.1642e+01 4.3485e+01 5.4827e+02]\n  Exponents:              [7.5733e-01 1.0000e+00 9.2723e-01]\n  Taus:                   [6.7920e-03 2.5486e-01 1.2412e+00]\n",
+    "n_data_points": 210,
+    "rc_groups": 3,
+    "n_restarts": 50
+  }
+]
