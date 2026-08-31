@@ -29,12 +29,12 @@ RESULTS_DIR = Path("research/results")
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def load_and_fit_csv(csv_path: Path, rc_groups: int = 3, n_restarts: int = 50, seed: int = 42) -> dict:
+def load_and_fit_csv(csv_path: Path, max_rc_groups: int = 5, n_restarts: int = 50, seed: int = 42) -> dict:
     """Load a CSV file and fit it using EISData.
     
     Args:
         csv_path: Path to CSV file
-        rc_groups: Number of R-CPE branches
+        max_rc_groups: Maximum number of R-CPE branches to try (default 5)
         n_restarts: Number of restarts for fitting
         seed: Random seed
         
@@ -50,14 +50,14 @@ def load_and_fit_csv(csv_path: Path, rc_groups: int = 3, n_restarts: int = 50, s
     # Create EISData object
     eis_data = EISData(df)
     
-    # Fit
-    print(f"  Fitting with {rc_groups} R-CPE branches, {n_restarts} restarts...")
+    # Fit with up to max_rc_groups
+    print(f"  Fitting with up to {max_rc_groups} R-CPE branches, {n_restarts} restarts...")
     start_time = time.time()
     
     try:
         fit_result = eis_data.fit(
             n_restarts=n_restarts,
-            rc_groups=rc_groups,
+            rc_groups=max_rc_groups,
             verbose=False,
             seed=seed,
         )
@@ -148,7 +148,7 @@ def main():
     
     for csv_path in csv_files:
         try:
-            result = load_and_fit_csv(csv_path, rc_groups=3, n_restarts=50, seed=42)
+            result = load_and_fit_csv(csv_path, max_rc_groups=5, n_restarts=50, seed=42)
             results.append(result)
             
             # Generate plot if fitting was successful
@@ -159,7 +159,7 @@ def main():
                 eis_data = EISData(df)
                 fit_result = eis_data.fit(
                     n_restarts=50,
-                    rc_groups=3,
+                    rc_groups=5,
                     verbose=False,
                     seed=42,
                 )
