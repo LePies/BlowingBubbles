@@ -6,14 +6,15 @@ largest on the frequency segment with the greatest integrated error.
 See :func:`fit_circuit` for the public entry point.
 """
 
-import numpy as np
-from scipy.signal import find_peaks
+import warnings
 
-from blowing_bubbles.classes.circuit_classes import CircuitParameters, FitResults
+import numpy as np
+
+from blowing_bubbles.classes.circuit_classes import FitResults
 from blowing_bubbles.classes.data_classes import EISData
-from blowing_bubbles.scripts.global_minimize import (
-    estimate_inductance_from_imag,
+from blowing_bubbles.scripts.global_minimize import (  # noqa: F401 (re-export)
     impendance_fit,
+    initial_fit,
 )
 
 
@@ -62,75 +63,6 @@ def argmax_residual_in_largest_area_segment(
     return start + local_max, seg_i
 
 
-def initial_fit(
-    eis: EISData,
-    prominence: float = 0.01,
-    tau_bounds: tuple[float, float] | None = None,
-    max_peaks: int | None = None,
-):
-    # Find all peaks with the given prominence
-    prom = prominence * np.ptp(-eis.Imag)
-    peaks, properties = find_peaks(-eis.Imag, prominence=prom)
-    # If max_peaks is set, keep the most prominent peaks (descending prominence)
-    if max_peaks is not None and len(peaks) > max_peaks:
-        prominences = properties["prominences"]
-        # Get indices of the most prominent peaks
-        top_peak_indices = np.argsort(prominences)[-max_peaks:][::-1]
-        # Sort the selected peaks in increasing index order for consistency
-        top_peak_indices = np.sort(top_peak_indices)
-        peaks = peaks[top_peak_indices]
-    # Now find the valley bottom between peaks
-    valleys = []
-    if len(peaks) > 1:
-        for i in range(len(peaks) - 1):
-            # Search between each pair of peaks for the minimum (valley)
-            start = peaks[i]
-            end = peaks[i + 1]
-            if end > start + 1:  # There is at least one point between the peaks
-                valley_idx = np.argmin(-eis.Imag[start : end + 1]) + start
-                valleys.append(valley_idx)
-
-    # Mountain width: valley to valley, or edge to valley for the first/last arc
-    mountain_widths = []
-    mountain_center_freqs = []
-
-    # Indexes bracketing each peak region
-    all_bounds = [0] + valleys + [len(eis.Real) - 1]
-
-    for i in range(len(peaks)):
-        # Find which bounds bracket the peak
-        # Peak i lies between all_bounds[i] and all_bounds[i + 1]
-        left = all_bounds[i]
-        right = all_bounds[i + 1]
-        # The width of this "mountain" is freq[right] - freq[left]
-        width = abs(eis.Real[right] - eis.Real[left])
-        mountain_widths.append(width)
-        peak_freq = float(eis.Freq[peaks[i]])
-        if peak_freq <= 0:
-            peak_freq = np.finfo(float).tiny
-        mountain_center_freqs.append(peak_freq)
-
-    resistances = np.array(mountain_widths)
-    # Apex of an ideal RC arc: omega_peak * R * C = 1 with omega = 2*pi*f.
-    taus = 1 / (2 * np.pi * np.asarray(mountain_center_freqs, dtype=float))
-    if tau_bounds is not None:
-        taus = np.clip(taus, tau_bounds[0], tau_bounds[1])
-    capacitances = taus / resistances
-    # High-frequency intercept, independent of the row order of the data.
-    resistances_source = float(eis.Real[int(np.argmax(eis.Freq))])
-    inductance = estimate_inductance_from_imag(eis.Freq, eis.Imag)
-    inductance_exponent = 1
-
-    return CircuitParameters(
-        resistance_source=resistances_source,
-        inductance=inductance,
-        inductance_exponent=inductance_exponent,
-        resistances=resistances,
-        capacitances=capacitances,
-        exponents=np.ones_like(resistances),
-    )
-
-
 def fit_circuit(
     data: EISData,
     n_restarts: int,
@@ -154,8 +86,9 @@ def fit_circuit(
        ``complex_fit=True`` for the initial branch count.
     #. While ``n_groups < rc_groups``, insert a new branch at the frequency where
        the residual magnitude is largest on the segment with greatest
-       :math:`\int |\hat{Z} - Z|\, d\log_{10} f`, re-fit, and keep the result if
-       cost does not increase (up to three attempts per insertion).
+       :math:`\int |\hat{Z} - Z|\, d\log_{10} f` and re-fit (up to three attempts).
+       If no attempt lowers the cost, expansion stops and the previous fit is
+       returned.
 
     Parameters
     ----------
@@ -189,7 +122,7 @@ def fit_circuit(
         Best fit after branch expansion; ``initialize_rc_groups`` records ``rc_groups``.
     """
     if rc_groups > 5:
-        print("Warning: rc_groups is greater than 5.")
+        warnings.warn("rc_groups is greater than 5.", stacklevel=2)
 
     initial_parameters = initial_fit(
         data,
@@ -242,64 +175,17 @@ def fit_circuit(
             segment_start, segment_end = 0, len(res.residuals) - 1
         else:
             segment_start, segment_end = segment_ranges[selected_seg]
-        if segment_end == len(res.residuals) - 1:
-            residuals_end = res.residuals[segment_end]
-        else:
-            residuals_end = res.residuals[segment_end + 1]
-        residuals_start = res.residuals[segment_start]
 
-        # Find the indices of the two taus surrounding 1/freq_add
-        taus = res.parameters.taus
-        target_tau = 1 / (2 * np.pi * freq_add)
-
-        # Find all taus less than or equal to target_tau
-        idx_below = np.where(taus <= target_tau)[0]
-        # Find all taus greater than target_tau
-        idx_above = np.where(taus > target_tau)[0]
-
-        # Last tau below (max index less or equal), first tau above (min index greater)
-        idx_lo = idx_below[-1] if len(idx_below) > 0 else None
-        idx_hi = idx_above[0] if len(idx_above) > 0 else None
-
-        new_params = res.parameters.copy()
-
-        if idx_lo is None and idx_hi is None:
-            raise ValueError(
-                "Cannot insert new group: both idx_lo and idx_hi are None."
-            )
-
-        tau_new = target_tau
-
-        if idx_hi is None:
-            insert_pos = len(new_params.resistances)
-        elif idx_lo is None:
-            insert_pos = 0
-        else:
-            insert_pos = idx_hi
-
+        # Ideal (e = 1) branch with its apex at freq_add: omega * R * C = 1.
+        tau_new = 1 / (2 * np.pi * freq_add)
         # Width of the selected residual segment along Z' (measured data),
         # scaled by 0.6 so the new arc does not overshoot the gap it targets.
-        seg_lo, seg_hi = sorted((segment_start, segment_end))
-        resistance_new = np.abs(data.Real[seg_hi] - data.Real[seg_lo]) * 0.6
+        resistance_new = np.abs(data.Real[segment_end] - data.Real[segment_start]) * 0.6
         if not np.isfinite(resistance_new) or resistance_new <= 0:
             resistance_new = 0.05 * float(np.ptp(data.Real))
-        capacitance_new = tau_new / resistance_new
-        exponent_new = 1.0
 
-        new_params.inductance *= 0.5
-        new_params.inductance_exponent = 0.9
-        new_params._set_branches(
-            np.insert(new_params.resistances, insert_pos, resistance_new),
-            np.insert(new_params.capacitances, insert_pos, capacitance_new),
-            np.insert(new_params.exponents, insert_pos, exponent_new),
-        )
-        new_params.sort_by_tau()
-
-        expected = branch_count + 1
-        assert len(new_params) == expected, (
-            f"Branch insert failed: expected {expected} groups, "
-            f"got {len(new_params)}."
-        )
+        new_params = res.parameters.copy()
+        new_params.add_branch(resistance_new, tau_new / resistance_new, 1.0)
 
         max_attempts = 3
         attempt = 0
@@ -311,7 +197,7 @@ def fit_circuit(
                 data,
                 n_groups=branch_count + 1,
                 complex_fit=True,
-                n_restarts=np.maximum(1, n_restarts // 2),
+                n_restarts=max(1, n_restarts // 2),
                 seed=attempt_seed,
                 weighting=weighting,
                 initial_parameters=new_params,
@@ -329,6 +215,13 @@ def fit_circuit(
 
         if res_new is None:
             raise RuntimeError("Branch expansion fit did not converge.")
+        if res_new.cost >= res.cost:
+            if verbose:
+                print(
+                    f"   Adding branch {branch_count + 1} did not lower the cost; "
+                    f"keeping {branch_count} branches."
+                )
+            break
 
         if verbose:
             print(f"\033[90m   New parameters: \n{new_params}\033[0m")
