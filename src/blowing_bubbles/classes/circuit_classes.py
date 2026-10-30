@@ -7,12 +7,14 @@ from __future__ import annotations
 import json
 import warnings
 from pathlib import Path
-from typing import overload
+from typing import TYPE_CHECKING, overload
 
 import numpy as np
-from matplotlib import pyplot as plt
-from matplotlib.axes import Axes
 from scipy.optimize import OptimizeResult
+
+if TYPE_CHECKING:
+    from matplotlib import pyplot as plt
+    from matplotlib.axes import Axes
 
 from blowing_bubbles.circuit_impedance import circuit_impedance
 
@@ -53,6 +55,8 @@ def _plot_full_fit(
         )
         unit = r"$\Omega$ cm$^{2}$"
     if axis is None:
+        from matplotlib import pyplot as plt
+
         _, axis = plt.subplots()
     Z_pred = parameters.get_impedance(freqs)
 
@@ -462,6 +466,8 @@ class CircuitParameters:
             )
             unit = r"$\Omega$ cm$^{2}$"
         if axis is None:
+            from matplotlib import pyplot as plt
+
             _, axis = plt.subplots()
         if freq is None:
             freq = np.logspace(-5, 5, 1000)

@@ -13,8 +13,10 @@ import numpy as np
 from blowing_bubbles.classes.circuit_classes import FitResults
 from blowing_bubbles.classes.data_classes import EISData
 from blowing_bubbles.scripts.global_minimize import (  # noqa: F401 (re-export)
+    _resolve_n_jobs,
     impendance_fit,
     initial_fit,
+    make_process_pool,
 )
 
 
@@ -75,6 +77,8 @@ def fit_circuit(
     resistance_branch_bounds: tuple[float, float] | None = None,
     exponent_bounds: tuple[float, float] | None = None,
     weighting: str = "modulus",
+    n_jobs: int | None = 1,
+    early_stop: int | None = None,
 ) -> FitResults:
     r"""Fit the R–CPE ladder with iterative fast branch building (IFBB).
 
@@ -115,12 +119,56 @@ def fit_circuit(
         Residual weighting passed to the fitter. ``"modulus"`` (default) divides
         each residual by :math:`|Z_k|`, so small high-frequency arcs carry weight;
         ``"unit"`` reproduces the unweighted objective of version 0.1.
+    n_jobs : int, optional
+        Worker processes for the restarts (``1``: sequential, default; ``-1``:
+        all cores). Scripts using ``n_jobs != 1`` on Windows/macOS need an
+        ``if __name__ == "__main__":`` guard.
+    early_stop : int, optional
+        Stop the restarts of each sub-fit once this many reached the best cost.
+        ``None`` (default) runs all restarts.
 
     Returns
     -------
     FitResults
         Best fit after branch expansion; ``initialize_rc_groups`` records ``rc_groups``.
     """
+    jobs = _resolve_n_jobs(n_jobs)
+    pool = make_process_pool(jobs) if jobs > 1 else None
+    try:
+        return _fit_circuit_impl(
+            data,
+            n_restarts,
+            rc_groups=rc_groups,
+            initial_peaks=initial_peaks,
+            verbose=verbose,
+            seed=seed,
+            tau_bounds=tau_bounds,
+            resistance_source_bounds=resistance_source_bounds,
+            resistance_branch_bounds=resistance_branch_bounds,
+            exponent_bounds=exponent_bounds,
+            weighting=weighting,
+            fit_kwargs={"executor": pool, "early_stop": early_stop},
+        )
+    finally:
+        if pool is not None:
+            pool.shutdown()
+
+
+def _fit_circuit_impl(
+    data: EISData,
+    n_restarts: int,
+    *,
+    rc_groups: int,
+    initial_peaks: int,
+    verbose: bool,
+    seed: int | None,
+    tau_bounds: tuple[float, float] | None,
+    resistance_source_bounds: tuple[float, float] | None,
+    resistance_branch_bounds: tuple[float, float] | None,
+    exponent_bounds: tuple[float, float] | None,
+    weighting: str,
+    fit_kwargs: dict,
+) -> FitResults:
     if rc_groups > 5:
         warnings.warn("rc_groups is greater than 5.", stacklevel=2)
 
@@ -149,6 +197,7 @@ def fit_circuit(
         resistance_source_bounds=resistance_source_bounds,
         resistance_branch_bounds=resistance_branch_bounds,
         exponent_bounds=exponent_bounds,
+        **fit_kwargs,
     )
     if res is None:
         raise RuntimeError("Initial impedance fit did not converge.")
@@ -192,7 +241,9 @@ def fit_circuit(
         res_new = None
         while attempt < max_attempts:
             # Distinct seed per attempt; identical seeds would repeat the same fit.
-            attempt_seed = None if seed is None else seed + 1000 * (branch_count + 1) + attempt
+            attempt_seed = (
+                None if seed is None else seed + 1000 * (branch_count + 1) + attempt
+            )
             res_try = impendance_fit(
                 data,
                 n_groups=branch_count + 1,
@@ -206,6 +257,7 @@ def fit_circuit(
                 resistance_source_bounds=resistance_source_bounds,
                 resistance_branch_bounds=resistance_branch_bounds,
                 exponent_bounds=exponent_bounds,
+                **fit_kwargs,
             )
             if res_try is not None and (res_new is None or res_try.cost < res_new.cost):
                 res_new = res_try
