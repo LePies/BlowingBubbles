@@ -4,6 +4,8 @@ Minimizes residuals between measured and model impedance
 :math:`Z_{\mathrm{pred}}(\omega_k; \mathbf{p})` at frequencies :math:`\omega_k`.
 """
 
+import warnings
+
 import numpy as np
 from scipy.optimize import (
     Bounds,
@@ -36,6 +38,10 @@ def initial_fit(
     # Find all peaks with the given prominence
     prom = prominence * np.ptp(-eis.Imag)
     peaks, properties = find_peaks(-eis.Imag, prominence=prom)
+    if len(peaks) == 0:
+        # No interior maximum (e.g. a truncated arc): seed one branch at the
+        # point of largest -Im(Z).
+        peaks = np.array([int(np.argmax(-eis.Imag))])
     # If max_peaks is set, keep the most prominent peaks (descending prominence)
     if max_peaks is not None and len(peaks) > max_peaks:
         prominences = properties["prominences"]
@@ -74,7 +80,9 @@ def initial_fit(
             peak_freq = np.finfo(float).tiny
         mountain_center_freqs.append(peak_freq)
 
-    resistances = np.array(mountain_widths)
+    # Floor zero widths so C = tau / R stays finite.
+    r_floor = max(1e-6 * float(np.ptp(eis.Real)), np.finfo(float).tiny)
+    resistances = np.maximum(np.array(mountain_widths), r_floor)
     # Apex of an ideal RC arc: omega_peak * R * C = 1 with omega = 2*pi*f.
     taus = 1 / (2 * np.pi * np.asarray(mountain_center_freqs, dtype=float))
     if tau_bounds is not None:
@@ -306,9 +314,8 @@ def impendance_fit(
     r"""Bounded TRF least-squares fit of the equivalent circuit to ``data``.
 
     **Objective.** With measured :math:`Z_k` and model
-    :math:`\hat{Z}_k = Z_{\mathrm{pred}}(\omega_k; \mathbf{p})`, residuals are either
-    stacked real/imaginary parts (``complex_fit=True``) or magnitudes
-    (``complex_fit=False``). Soft penalties keep Nyquist arc centers inside the
+    :math:`\hat{Z}_k = Z_{\mathrm{pred}}(\omega_k; \mathbf{p})`, residuals are the
+    stacked real and imaginary parts of the difference. Soft penalties keep Nyquist arc centers inside the
     measured :math:`Z'` range.
 
     **Reparameterization.** Capacitances enter as non-negative increments
@@ -322,9 +329,9 @@ def impendance_fit(
     n_groups : int
         Number of parallel R–CPE branches.
     complex_fit : bool
-        If ``True``, fit CPE exponents and use complex residuals; if ``False``, fix
-        :math:`e_i = 1` and minimize magnitude error. When ``True``, branch exponents
-        and the inductance exponent :math:`n` are bounded to ``0.2 < n < 1``.
+        If ``True``, fit the CPE exponents (bounded to ``0.2 <= e <= 1``); if
+        ``False``, fix :math:`e_i = 1` and :math:`n_L = 1` (ideal capacitors and
+        inductor). Residuals are complex (stacked real/imaginary) in both cases.
     initial_parameters : CircuitParameters, optional
         Starting point; branch count must match ``n_groups``.
     n_restarts : int
@@ -374,9 +381,13 @@ def impendance_fit(
     FitResults
         Optimized parameters and residual vectors.
     """
+    if n_groups < 1:
+        raise ValueError(f"n_groups must be >= 1, got {n_groups}.")
+
     rng = np.random.default_rng(seed)
 
     if initial_parameters is not None:
+        initial_parameters = initial_parameters.copy()  # do not mutate caller's
         initial_parameters.sort_by_tau()
 
     X = data.Freq
@@ -388,7 +399,7 @@ def impendance_fit(
         W = np.ones(Y.shape, dtype=float)
     else:
         raise ValueError(f"Unknown weighting {weighting!r}; use 'modulus' or 'unit'.")
-    W_rows = np.concatenate([W, W]) if complex_fit else W
+    W_rows = np.concatenate([W, W])
 
     z_min = float(np.min(data.Real))
     z_max = float(np.max(data.Real))
@@ -577,13 +588,7 @@ def impendance_fit(
         if complex_fit:
             J[:, e_slice] = g["exponents"]
 
-        if complex_fit:
-            return np.vstack([J.real, J.imag])
-
-        diff = _model_func(X, p) - Y
-        mag = np.abs(diff)
-        safe = np.where(mag > 0, mag, 1.0)
-        return (np.conj(diff)[:, None] * J).real / safe[:, None]
+        return np.vstack([J.real, J.imag])
 
     def _margin_jacobian_rows(p: np.ndarray) -> np.ndarray:
         rows = np.zeros((2, n_params))
@@ -687,8 +692,8 @@ def impendance_fit(
                 p_out, r_slice, z_min, z_max, constraint_tol
             ):
                 return p_out, cost_out
-        except Exception:
-            pass
+        except (ValueError, np.linalg.LinAlgError) as exc:
+            warnings.warn(f"Constraint polish failed: {exc}", stacklevel=3)
 
         return p, cost
 
@@ -728,6 +733,7 @@ def impendance_fit(
     best_cost: float | None = None
     best_x: np.ndarray | None = None
     polish_count = 0
+    failures: list[str] = []
 
     base_init = _project_feasible(
         parameters_init.copy(),
@@ -755,7 +761,8 @@ def impendance_fit(
                 max_nfev=max_nfev,
                 x_scale="jac",
             )
-        except Exception:
+        except (ValueError, np.linalg.LinAlgError) as exc:
+            failures.append(f"{type(exc).__name__}: {exc}")
             continue
 
         p = _project_feasible(
@@ -781,7 +788,16 @@ def impendance_fit(
             best_x = p.copy()
 
     if best_x is None:
-        raise RuntimeError("All restarts failed to produce a fit.")
+        raise RuntimeError(
+            f"All {len(failures)} restarts failed to produce a fit. "
+            f"First error: {failures[0] if failures else 'unknown'}"
+        )
+    if failures:
+        warnings.warn(
+            f"{len(failures)} of {max(1, n_restarts)} restarts failed "
+            f"(first: {failures[0]}).",
+            stacklevel=2,
+        )
 
     res_ls = OptimizeResult(
         x=best_x,

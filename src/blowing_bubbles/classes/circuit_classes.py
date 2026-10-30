@@ -97,7 +97,7 @@ def _plot_full_fit(
             if len(xline) > 1:
                 xmid = rs_i + ri_i / 2
                 axis.text(
-                    xmid + np.abs(parameters.inductance),
+                    xmid,
                     -np.max(np.abs(Z_pred.imag))*0.2,
                     fr"$R_{n_groups}$",
                     fontsize=12,
@@ -147,6 +147,8 @@ def _plot_full_fit(
     axis.spines['top'].set_visible(False)
     axis.set_xlabel("Z' "+ unit)
     axis.set_ylabel("-Z'' "+ unit)
+    return axis
+
 
 class CircuitParameters:
     r"""Container for the parametric R–CPE ladder used in BlowingBubbles EIS fitting.
@@ -278,7 +280,8 @@ class CircuitParameters:
         self.drop_branch(-1)
         return r, c, e
 
-    def __dict__(self):
+    def as_dict(self) -> dict:
+        """Return the parameters as a flat dict of floats and arrays."""
         return {
             "resistance_source": self.resistance_source,
             "inductance": self.inductance,
@@ -335,8 +338,9 @@ class CircuitParameters:
 
     
     @classmethod
-    def from_array(array: np.ndarray, n_groups: int):
-        return CircuitParameters(
+    def from_array(cls, array: np.ndarray, n_groups: int) -> CircuitParameters:
+        """Inverse of :meth:`to_array`."""
+        return cls(
             resistance_source=array[0],
             inductance=array[1],
             inductance_exponent=array[2],
@@ -495,8 +499,7 @@ class CircuitParameters:
         """
         if freq is None:
             freq = np.logspace(-5, 5, 1000)
-        _plot_full_fit(freq, self, axis, unit)
-        return axis
+        return _plot_full_fit(freq, self, axis, unit)
 
 
 class FitResults(OptimizeResult):

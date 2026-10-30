@@ -6,6 +6,7 @@ the R–CPE ladder using iterative fast branch building.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
@@ -39,7 +40,8 @@ class EISData:
             self,
             data_set: pd.DataFrame,
             area: float | None = None,
-            unit: str = "Ohm"
+            unit: str = "Ohm",
+            columns: tuple[str, str, str] | None = None,
         ) -> None:
         """
         Initialize EIS data.
@@ -51,6 +53,9 @@ class EISData:
             imaginary impedance columns
         area : float
             Electrode area for normalization (default: 1.0)
+        columns : tuple of str, optional
+            Explicit ``(real, imag, freq)`` column names. If ``None`` they are
+            detected with :meth:`find_keys`.
 
         Returns
         -------
@@ -61,7 +66,7 @@ class EISData:
         from_csv : Alternative constructor to load from file
         """
         self.data = data_set
-        self.keys = self.find_keys()
+        self.keys = tuple(columns) if columns is not None else self.find_keys()
         self.Real = data_set[self.keys[0]].to_numpy()
         self.Imag = data_set[self.keys[1]].to_numpy()
         self.Freq = data_set[self.keys[2]].to_numpy()
@@ -117,23 +122,39 @@ class EISData:
             unit=unit
         )
 
-    def __add__(self, other: EISData) -> EISData:
-        data_temp = self.data.copy()
-        data_temp["Real"] = data_temp[self.keys[0]] + other.data[other.keys[0]]
-        data_temp["Imag"] = data_temp[self.keys[1]] + other.data[other.keys[1]]
-        return EISData(data_temp)
+    def _with_impedance(self, z: np.ndarray) -> EISData:
+        """New :class:`EISData` on this frequency grid with impedance *z*."""
+        r_key, i_key, f_key = self.keys
+        frame = pd.DataFrame({f_key: self.Freq, r_key: z.real, i_key: z.imag})
+        new = EISData(frame, unit=self.unit, columns=(r_key, i_key, f_key))
+        new.normalization_area = self.normalization_area
+        return new
 
-    def __sub__(self, other: EISData) -> EISData:
-        data_temp = self.data.copy()
-        data_temp["Real"] = data_temp[self.keys[0]] - other.data[other.keys[0]]
-        data_temp["Imag"] = data_temp[self.keys[1]] - other.data[other.keys[1]]
-        return EISData(data_temp)
+    def _impedance_of(self, other: EISData | complex | float) -> np.ndarray | complex:
+        if isinstance(other, EISData):
+            if other.Freq.shape != self.Freq.shape or not np.allclose(
+                other.Freq, self.Freq
+            ):
+                raise ValueError("EISData arithmetic requires identical frequencies.")
+            return other.Real + 1j * other.Imag
+        return other
 
-    def __mul__(self, other: EISData) -> EISData:
-        return EISData(self.data * other.data)
+    @property
+    def Z(self) -> np.ndarray:
+        """Complex impedance ``Real + 1j * Imag``."""
+        return self.Real + 1j * self.Imag
 
-    def __truediv__(self, other: EISData) -> EISData:
-        return EISData(self.data / other.data)
+    def __add__(self, other: EISData | complex | float) -> EISData:
+        return self._with_impedance(self.Z + self._impedance_of(other))
+
+    def __sub__(self, other: EISData | complex | float) -> EISData:
+        return self._with_impedance(self.Z - self._impedance_of(other))
+
+    def __mul__(self, other: EISData | complex | float) -> EISData:
+        return self._with_impedance(self.Z * self._impedance_of(other))
+
+    def __truediv__(self, other: EISData | complex | float) -> EISData:
+        return self._with_impedance(self.Z / self._impedance_of(other))
 
     def __str__(self):
         """
@@ -169,25 +190,25 @@ class EISData:
         F_key : str
             Key for frequency.
         """
-        freq_names = ["f", "freq", "frequency"]
-        real_names = ["r", "real", "real_part"]
-        imag_names = ["i", "imag", "imaginary", "imaginary_part"]
-        R_key: str | None = None
-        I_key: str | None = None
-        F_key: str | None = None
+        categories = {
+            "freq": ({"f", "freq", "frequency", "hz"}, "freq"),
+            "real": ({"r", "re", "real", "zre", "zreal"}, "real"),
+            "imag": ({"i", "im", "imag", "imaginary", "zim", "zimag"}, "imag"),
+        }
+        matches: dict[str, list[str]] = {name: [] for name in categories}
         for key in self.data.keys():
-            if any(name in key.lower() for name in freq_names):
-                F_key = key
-            if any(name in key.lower() for name in real_names):
-                R_key = key
-            if any(name in key.lower() for name in imag_names):
-                I_key = key
-        if R_key is None or F_key is None or I_key is None:
-            raise ValueError(
-                "Could not find required keys in data. "
-                "Expected keys containing 'R', 'F', and 'I' (case insensitive)."
-            )
-        return R_key, I_key, F_key
+            tokens = [t for t in re.split(r"[^a-z]+", str(key).lower()) if t]
+            for name, (exact, prefix) in categories.items():
+                if any(t in exact or t.startswith(prefix) for t in tokens):
+                    matches[name].append(key)
+        for name, found in matches.items():
+            if len(found) != 1:
+                problem = "No" if not found else f"Ambiguous ({found})"
+                raise ValueError(
+                    f"{problem} column for {name!r} in {list(self.data.keys())}. "
+                    "Pass columns=(real, imag, freq) explicitly."
+                )
+        return matches["real"][0], matches["imag"][0], matches["freq"][0]
 
     def limit_data(self, start: int, end: int) -> None:
         """
@@ -207,6 +228,7 @@ class EISData:
         self.Real = self.Real[start:end]
         self.Imag = self.Imag[start:end]
         self.Freq = self.Freq[start:end]
+        self.data = self.data.iloc[start:end]
 
     def find_Rs(self) -> tuple[float, int]:
         """
@@ -219,28 +241,19 @@ class EISData:
         index : int
             Index of series resistance.
         """
-        diff_last = np.diff(self.Imag)[-1]
-        if np.isnan(diff_last) or diff_last == 0:
-            # Handle NaN or zero case - default to finding minimum real part
-            min_idx = np.nanargmin(np.abs(self.Imag))
-            return float(self.Real[min_idx]), int(min_idx)
-        elif diff_last > 0:
-            sign = 1
-        else:  # diff_last < 0
-            sign = -1
-        for i in range(1, len(self.Imag)):
-            if sign * np.diff(self.Imag)[-i] < 0:
-                break
-        i = i - 1
-
-        lower_limit = min(self.Imag[0:-i])
-        upper_limit = max(self.Imag[0:-i])
-        if upper_limit < 0:
-            upper_limit = 0
-        for j in range(len(self.Imag[-i:])):
-            if self.Imag[-i:][j] > upper_limit or self.Imag[-i:][j] < lower_limit:
-                break
-        return self.Real[-i:][j], j - i
+        order = np.argsort(self.Freq)[::-1]  # high -> low frequency
+        imag = self.Imag[order]
+        # First sign change of Im(Z) coming from high frequency: the HF intercept
+        # between the inductive tail and the first capacitive arc.
+        crossings = np.nonzero(np.signbit(imag[:-1]) != np.signbit(imag[1:]))[0]
+        if crossings.size and imag[0] > 0:
+            k = int(crossings[0])
+            i0, i1 = order[k], order[k + 1]
+            t = imag[k] / (imag[k] - imag[k + 1])
+            rs = self.Real[i0] + t * (self.Real[i1] - self.Real[i0])
+            return float(rs), int(i0)
+        i0 = int(order[0])
+        return float(self.Real[i0]), i0
 
     def simpleRs(self) -> None:
         """
@@ -262,7 +275,8 @@ class EISData:
         index : int
             Index of total resistance.
         """
-        return self.Real[0], 0
+        i = int(np.argmin(self.Freq))
+        return float(self.Real[i]), i
 
     def find_Rp(self) -> tuple[float, float]:
         """
