@@ -362,6 +362,7 @@ class EISData:
         resistance_source_bounds: tuple[float, float] | None = None,
         resistance_branch_bounds: tuple[float, float] | None = None,
         exponent_bounds: tuple[float, float] | None = None,
+        weighting: str = "modulus",
     ) -> FitResults:
         r"""Fit the parametric R–CPE ladder to this spectrum.
 
@@ -386,6 +387,8 @@ class EISData:
             Bounds on branch resistances :math:`R_i`.
         exponent_bounds : tuple of float, optional
             Bounds on CPE exponents :math:`\alpha_i` and :math:`\beta`.
+        weighting : {"modulus", "unit"}
+            Residual weighting (default ``"modulus"``, i.e. relative error).
 
         Returns
         -------
@@ -404,7 +407,8 @@ class EISData:
             initial_peaks=initial_peaks,
             resistance_source_bounds=resistance_source_bounds,
             resistance_branch_bounds=resistance_branch_bounds,
-            exponent_bounds=exponent_bounds
+            exponent_bounds=exponent_bounds,
+            weighting=weighting,
         )
 
         return res
@@ -513,6 +517,7 @@ def fit_circuit(
     resistance_source_bounds: tuple[float, float] | None = None,
     resistance_branch_bounds: tuple[float, float] | None = None,
     exponent_bounds: tuple[float, float] | None = None,
+    weighting: str = "modulus",
 ) -> FitResults:
     """Fit an R–CPE ladder to *data* using iterative fast branch building."""
     from blowing_bubbles.scripts.fit_circuit import fit_circuit as _run_fit
@@ -527,7 +532,8 @@ def fit_circuit(
         tau_bounds=tau_bounds,
         resistance_source_bounds=resistance_source_bounds,
         resistance_branch_bounds=resistance_branch_bounds,
-        exponent_bounds=exponent_bounds
+        exponent_bounds=exponent_bounds,
+        weighting=weighting,
     )
 
 def quick_fit(

@@ -111,11 +111,13 @@ def initial_fit(
         mountain_center_freqs.append(peak_freq)
 
     resistances = np.array(mountain_widths)
-    taus = 1 / np.asarray(mountain_center_freqs, dtype=float)
+    # Apex of an ideal RC arc: omega_peak * R * C = 1 with omega = 2*pi*f.
+    taus = 1 / (2 * np.pi * np.asarray(mountain_center_freqs, dtype=float))
     if tau_bounds is not None:
         taus = np.clip(taus, tau_bounds[0], tau_bounds[1])
     capacitances = taus / resistances
-    resistances_source = eis.Real[0]
+    # High-frequency intercept, independent of the row order of the data.
+    resistances_source = float(eis.Real[int(np.argmax(eis.Freq))])
     inductance = estimate_inductance_from_imag(eis.Freq, eis.Imag)
     inductance_exponent = 1
 
@@ -140,6 +142,7 @@ def fit_circuit(
     resistance_source_bounds: tuple[float, float] | None = None,
     resistance_branch_bounds: tuple[float, float] | None = None,
     exponent_bounds: tuple[float, float] | None = None,
+    weighting: str = "modulus",
 ) -> FitResults:
     r"""Fit the R–CPE ladder with iterative fast branch building (IFBB).
 
@@ -175,6 +178,10 @@ def fit_circuit(
         ``(R_min, R_max)`` uniform box bounds for all branch resistances.
     exponent_bounds : tuple of float, optional
         ``(e_min, e_max)`` uniform box bounds for all CPE exponents.
+    weighting : {"modulus", "unit"}
+        Residual weighting passed to the fitter. ``"modulus"`` (default) divides
+        each residual by :math:`|Z_k|`, so small high-frequency arcs carry weight;
+        ``"unit"`` reproduces the unweighted objective of version 0.1.
 
     Returns
     -------
@@ -203,6 +210,7 @@ def fit_circuit(
         n_restarts=n_restarts,
         seed=seed,
         sigma=0.5,
+        weighting=weighting,
         initial_parameters=initial_parameters,
         tau_bounds=tau_bounds,
         resistance_source_bounds=resistance_source_bounds,
@@ -216,6 +224,11 @@ def fit_circuit(
         if verbose:
             print(f"Fitting with {branch_count + 1} groups")
         magnitude = res.residuals_magnitude
+        if weighting == "modulus":
+            # Locate the gap on the same (relative) scale the fit minimises.
+            magnitude = magnitude / np.maximum(
+                np.abs(data.Real + 1j * data.Imag), np.finfo(float).tiny
+            )
         log_freq = np.log10(data.Freq)
         segment_ranges, integrated_areas = segment_magnitude_integrals(
             magnitude, log_freq
@@ -237,7 +250,7 @@ def fit_circuit(
 
         # Find the indices of the two taus surrounding 1/freq_add
         taus = res.parameters.taus
-        target_tau = 1 / freq_add
+        target_tau = 1 / (2 * np.pi * freq_add)
 
         # Find all taus less than or equal to target_tau
         idx_below = np.where(taus <= target_tau)[0]
@@ -255,7 +268,7 @@ def fit_circuit(
                 "Cannot insert new group: both idx_lo and idx_hi are None."
             )
 
-        tau_new = 1 / freq_add
+        tau_new = target_tau
 
         if idx_hi is None:
             insert_pos = len(new_params.resistances)
@@ -264,7 +277,12 @@ def fit_circuit(
         else:
             insert_pos = idx_hi
 
-        resistance_new = np.abs(residuals_start - residuals_end) * 0.6
+        # Width of the selected residual segment along Z' (measured data),
+        # scaled by 0.6 so the new arc does not overshoot the gap it targets.
+        seg_lo, seg_hi = sorted((segment_start, segment_end))
+        resistance_new = np.abs(data.Real[seg_hi] - data.Real[seg_lo]) * 0.6
+        if not np.isfinite(resistance_new) or resistance_new <= 0:
+            resistance_new = 0.05 * float(np.ptp(data.Real))
         capacitance_new = tau_new / resistance_new
         exponent_new = 1.0
 
@@ -287,12 +305,15 @@ def fit_circuit(
         attempt = 0
         res_new = None
         while attempt < max_attempts:
-            res_new = impendance_fit(
+            # Distinct seed per attempt; identical seeds would repeat the same fit.
+            attempt_seed = None if seed is None else seed + 1000 * (branch_count + 1) + attempt
+            res_try = impendance_fit(
                 data,
                 n_groups=branch_count + 1,
                 complex_fit=True,
                 n_restarts=np.maximum(1, n_restarts // 2),
-                seed=seed,
+                seed=attempt_seed,
+                weighting=weighting,
                 initial_parameters=new_params,
                 sigma=0.1,
                 tau_bounds=tau_bounds,
@@ -300,6 +321,8 @@ def fit_circuit(
                 resistance_branch_bounds=resistance_branch_bounds,
                 exponent_bounds=exponent_bounds,
             )
+            if res_try is not None and (res_new is None or res_try.cost < res_new.cost):
+                res_new = res_try
             if res_new is not None and res_new.cost <= res.cost:
                 break
             attempt += 1
