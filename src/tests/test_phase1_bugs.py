@@ -144,3 +144,55 @@ def test_plot_full_fit_returns_axes():
     matplotlib.use("Agg")
     ax = TRUTH.plot_full_fit(unit="Ohm")
     assert ax is not None and len(ax.lines) > 0
+
+
+# --- Phase 2: fast evaluator, parallel restarts, early stop -----------------
+
+
+@pytest.mark.parametrize("complex_fit", [True, False])
+def test_fit_problem_jacobian_matches_finite_differences(complex_fit):
+    from blowing_bubbles.scripts.global_minimize import _FitProblem
+
+    rng = np.random.default_rng(0)
+    n = 3
+    head = 3 if complex_fit else 2
+    n_params = head + (2 + complex_fit) * n
+    z = TRUTH.get_impedance(FREQ)
+    prob = _FitProblem(
+        FREQ, z, 1 / np.abs(z), complex_fit=complex_fit, n_groups=n,
+        z_min=-1.0, z_max=1.0, margin=0.0, margin_weight=1.0,
+        lower=np.zeros(n_params), upper=np.full(n_params, np.inf),
+        tau_bounds=None, max_nfev=100, polish=False, polish_maxiter=1,
+        constraint_tol=1e-9,
+    )
+    p = rng.uniform(0.5, 1.0, n_params)
+    p[1] = 1e-6
+    p[head + n : head + 2 * n] = [1e-4, 1e-3, 1e-1]
+    J = prob.jacobian(p)
+    J_fd = np.empty_like(J)
+    for k in range(n_params):
+        h = 1e-6 * abs(p[k])
+        pp, pm = p.copy(), p.copy()
+        pp[k] += h
+        pm[k] -= h
+        J_fd[:, k] = (prob.residuals(pp) - prob.residuals(pm)) / (2 * h)
+    scale = np.max(np.abs(J_fd), axis=0)
+    assert np.max(np.abs(J - J_fd) / scale) < 1e-5
+
+
+def test_parallel_restarts_match_sequential():
+    eis = EISData(_frame(("freq", "real", "imag")))
+    kwargs = dict(n_groups=2, complex_fit=True, initial_parameters=TRUTH, seed=1)
+    seq = impendance_fit(eis, n_restarts=4, n_jobs=1, **kwargs)
+    par = impendance_fit(eis, n_restarts=4, n_jobs=2, **kwargs)
+    np.testing.assert_array_equal(seq.parameters.to_array(), par.parameters.to_array())
+
+
+def test_early_stop_runs_fewer_restarts():
+    eis = EISData(_frame(("freq", "real", "imag")))
+    res = impendance_fit(
+        eis, n_groups=2, complex_fit=True, initial_parameters=TRUTH,
+        n_restarts=50, seed=1, early_stop=3,
+    )
+    assert "of 50 restarts" in res.message
+    assert not res.message.startswith("hybrid TRF (50 of")

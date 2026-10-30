@@ -4,7 +4,13 @@ Minimizes residuals between measured and model impedance
 :math:`Z_{\mathrm{pred}}(\omega_k; \mathbf{p})` at frequencies :math:`\omega_k`.
 """
 
+from __future__ import annotations
+
+import os
 import warnings
+from concurrent.futures import Executor, ProcessPoolExecutor
+from itertools import repeat
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from scipy.optimize import (
@@ -16,12 +22,10 @@ from scipy.optimize import (
 )
 from scipy.signal import find_peaks
 
-from blowing_bubbles.circuit_impedance import (
-    circuit_impedance,
-    circuit_impedance_parameter_gradient,
-)
 from blowing_bubbles.classes.circuit_classes import CircuitParameters, FitResults
-from blowing_bubbles.classes.data_classes import EISData
+
+if TYPE_CHECKING:
+    from blowing_bubbles.classes.data_classes import EISData
 
 
 def initial_fit(
@@ -260,7 +264,6 @@ def _project_feasible(
         return p
 
     for _ in range(4):
-        R = p[r_slice].copy()
         Rs = p[0]
 
         if Rs > z_min:
@@ -287,6 +290,305 @@ def _project_feasible(
     return p
 
 
+class _FitProblem:
+    """Weighted residuals, Jacobian and constraint handling for one fit.
+
+    Module-level and picklable so restarts can run in worker processes. The
+    forward model is evaluated once per parameter vector and cached, so the
+    Jacobian at an accepted step reuses the intermediates of the residual call.
+    """
+
+    def __init__(
+        self,
+        freq: np.ndarray,
+        z: np.ndarray,
+        weights: np.ndarray,
+        *,
+        complex_fit: bool,
+        n_groups: int,
+        z_min: float,
+        z_max: float,
+        margin: float,
+        margin_weight: float,
+        lower: np.ndarray,
+        upper: np.ndarray,
+        tau_bounds: tuple[float, float] | None,
+        max_nfev: int,
+        polish: bool,
+        polish_maxiter: int,
+        constraint_tol: float,
+    ) -> None:
+        # log(j*omega) on the principal branch: (j*omega)**e == exp(e * log_s).
+        omega = 2.0 * np.pi * np.asarray(freq, dtype=float)
+        self.log_s = np.log(omega) + 0.5j * np.pi
+        self.z = z
+        self.w = weights
+        self.m = z.size
+        self.complex_fit = complex_fit
+        self.n_groups = n_groups
+        self.head = 3 if complex_fit else 2
+        self.r_slice = slice(self.head, self.head + n_groups)
+        self.dtau_slice = slice(self.head + n_groups, self.head + 2 * n_groups)
+        self.e_slice = slice(self.head + 2 * n_groups, self.head + 3 * n_groups)
+        self.n_params = self.head + (2 + complex_fit) * n_groups
+        self.z_min = z_min
+        self.z_max = z_max
+        self.margin = margin
+        self.margin_weight = margin_weight
+        self.lower = lower
+        self.upper = upper
+        self.tau_bounds = tau_bounds
+        self.max_nfev = max_nfev
+        self.polish = polish
+        self.polish_maxiter = polish_maxiter
+        self.constraint_tol = constraint_tol
+        self._ones = np.ones(n_groups)
+        self._tau_chain = np.tri(n_groups)
+        self._key: bytes | None = None
+        self._state: tuple | None = None
+
+    def __getstate__(self) -> dict:
+        state = self.__dict__.copy()
+        state["_key"] = None
+        state["_state"] = None
+        return state
+
+    def _forward(self, p: np.ndarray) -> tuple:
+        key = p.tobytes()
+        if key != self._key:
+            R = p[self.r_slice].copy()
+            tau = np.cumsum(p[self.dtau_slice])
+            e = p[self.e_slice] if self.complex_fit else self._ones
+            n_l = p[2] if self.complex_fit else 1.0
+            s_l = np.exp(n_l * self.log_s)
+            S = np.exp(self.log_s[:, None] * e)
+            D = 1.0 + tau * S
+            Z = p[0] + p[1] * s_l + np.sum(R / D, axis=1)
+            self._key = key
+            self._state = (R, tau, s_l, S, D, Z)
+        return self._state
+
+    def model(self, p: np.ndarray) -> np.ndarray:
+        return self._forward(np.asarray(p, dtype=float))[-1]
+
+    def _margin_terms(self, p: np.ndarray) -> tuple[float, float]:
+        c_lo, c_hi = _center_positions(p, self.r_slice)
+        return self.margin + (c_lo - self.z_min), self.margin - (self.z_max - c_hi)
+
+    def residuals(self, p: np.ndarray) -> np.ndarray:
+        p = np.asarray(p, dtype=float)
+        diff = self._forward(p)[-1] - self.z
+        m = self.m
+        out = np.empty(2 * m + 2)
+        out[:m] = self.w * diff.real
+        out[m : 2 * m] = self.w * diff.imag
+        pen_lo, pen_hi = self._margin_terms(p)
+        out[2 * m] = self.margin_weight * max(0.0, pen_lo)
+        out[2 * m + 1] = self.margin_weight * max(0.0, pen_hi)
+        return out
+
+    def jacobian(self, p: np.ndarray) -> np.ndarray:
+        p = np.asarray(p, dtype=float)
+        R, tau, s_l, S, D, _ = self._forward(p)
+        # Z_i = R_i / D_i with D_i = 1 + tau_i S_i, so at fixed tau:
+        #   dZ/dR_i = 1/D_i,  dZ/dtau_i = -R_i S_i / D_i^2,
+        #   dZ/de_i = dZ/dtau_i * tau_i * log(j omega).
+        dz_dtau = -R * S / (D * D)
+        J = np.empty((self.m, self.n_params), dtype=complex)
+        J[:, 0] = 1.0
+        J[:, 1] = s_l
+        if self.complex_fit:
+            J[:, 2] = p[1] * s_l * self.log_s
+            J[:, self.e_slice] = dz_dtau * tau * self.log_s[:, None]
+        J[:, self.r_slice] = 1.0 / D
+        J[:, self.dtau_slice] = dz_dtau @ self._tau_chain
+
+        m = self.m
+        w = self.w[:, None]
+        out = np.zeros((2 * m + 2, self.n_params))
+        out[:m] = w * J.real
+        out[m : 2 * m] = w * J.imag
+        pen_lo, pen_hi = self._margin_terms(p)
+        if pen_lo > 0:
+            out[2 * m, 0] = self.margin_weight
+        if pen_hi > 0:
+            out[2 * m + 1, 0] = self.margin_weight
+            out[2 * m + 1, self.r_slice] = self.margin_weight
+            out[2 * m + 1, self.head + self.n_groups - 1] = 0.5 * self.margin_weight
+        return out
+
+    def cost(self, p: np.ndarray) -> float:
+        r = self.residuals(p)
+        return 0.5 * float(np.dot(r, r))
+
+    def project(self, p: np.ndarray) -> np.ndarray:
+        return _project_feasible(
+            p,
+            self.z_min,
+            self.z_max,
+            self.head,
+            self.r_slice,
+            self.lower,
+            self.upper,
+            self.n_groups,
+            dtau_slice=self.dtau_slice,
+            tau_bounds=self.tau_bounds,
+        )
+
+    def satisfied(self, p: np.ndarray) -> bool:
+        return _constraints_satisfied(
+            p, self.r_slice, self.z_min, self.z_max, self.constraint_tol
+        )
+
+    def polish_if_infeasible(
+        self, p: np.ndarray, cost: float
+    ) -> tuple[np.ndarray, float]:
+        p = self.project(p)
+        if self.satisfied(p):
+            return p, self.cost(p)
+        if not self.polish:
+            return p, cost
+        try:
+            res_opt = minimize(
+                self.cost,
+                p,
+                method="trust-constr",
+                jac=lambda x: self.jacobian(x).T @ self.residuals(x),
+                bounds=Bounds(self.lower, self.upper),
+                constraints=[
+                    _build_center_linear_constraint(
+                        self.n_params, self.head, self.n_groups, self.z_min, self.z_max
+                    )
+                ],
+                options={"maxiter": self.polish_maxiter, "verbose": 0},
+            )
+            p_out = self.project(res_opt.x)
+            cost_out = self.cost(p_out)
+            if cost_out <= cost or self.satisfied(p_out):
+                return p_out, cost_out
+        except (ValueError, np.linalg.LinAlgError) as exc:
+            warnings.warn(f"Constraint polish failed: {exc}", stacklevel=3)
+        return p, cost
+
+
+def _solve_restart(problem: _FitProblem, init: np.ndarray) -> dict[str, Any]:
+    """One TRF solve from *init*, projected (and polished) onto the constraints."""
+    try:
+        res_ls = least_squares(
+            problem.residuals,
+            init,
+            jac=problem.jacobian,
+            method="trf",
+            bounds=(problem.lower, problem.upper),
+            max_nfev=problem.max_nfev,
+            x_scale="jac",
+        )
+    except (ValueError, np.linalg.LinAlgError) as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+    p = problem.project(res_ls.x.copy())
+    cost = problem.cost(p)
+    polished = not problem.satisfied(p)
+    if polished:
+        p, cost = problem.polish_if_infeasible(p, cost)
+    return {
+        "x": p,
+        "cost": cost,
+        "polished": polished,
+        "nfev": int(res_ls.nfev),
+        "njev": int(res_ls.njev or 0),
+        "status": int(res_ls.status),
+    }
+
+
+_BLAS_THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
+
+
+def _noop(_: int) -> None:
+    return None
+
+
+def make_process_pool(n_jobs: int | None = -1) -> ProcessPoolExecutor:
+    """Process pool for restarts whose workers use single-threaded BLAS.
+
+    Restart solves work on tiny matrices, so multithreaded BLAS in every worker
+    only oversubscribes the CPU (and with many workers can exhaust memory).
+    Pass the pool as ``executor=`` to reuse it across fits.
+    """
+    jobs = _resolve_n_jobs(n_jobs)
+    saved = {k: os.environ.get(k) for k in _BLAS_THREAD_VARS}
+    os.environ.update(dict.fromkeys(_BLAS_THREAD_VARS, "1"))
+    try:
+        pool = ProcessPoolExecutor(max_workers=jobs)
+        # Workers spawn lazily; start them all while the variables are set.
+        list(pool.map(_noop, range(jobs)))
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    return pool
+
+
+def _resolve_n_jobs(n_jobs: int | None) -> int:
+    if n_jobs is None or n_jobs == 0:
+        return 1
+    if n_jobs < 0:
+        return max(1, (os.cpu_count() or 1) + 1 + n_jobs)
+    return n_jobs
+
+
+def _run_restarts(
+    problem: _FitProblem,
+    inits: list[np.ndarray],
+    n_jobs: int | None,
+    executor: Executor | None,
+    early_stop: int | None,
+    early_stop_rtol: float = 1e-6,
+) -> list[dict[str, Any]]:
+    """Run restarts in order (or in parallel batches) with optional early stop.
+
+    With ``early_stop=k`` the loop ends once ``k`` restarts reached the best
+    cost within ``early_stop_rtol``. Parallel runs check after each batch.
+    """
+    results: list[dict[str, Any]] = []
+
+    def converged() -> bool:
+        if early_stop is None:
+            return False
+        costs = [r["cost"] for r in results if "cost" in r]
+        if len(costs) < early_stop:
+            return False
+        best = min(costs)
+        # Absolute floor: on noise-free data all costs are ~1e-30 round-off.
+        tol = max(early_stop_rtol * best, 1e-20)
+        n_best = sum(c <= best + tol for c in costs)
+        return n_best >= early_stop
+
+    jobs = _resolve_n_jobs(n_jobs)
+    if executor is None and jobs == 1:
+        for init in inits:
+            results.append(_solve_restart(problem, init))
+            if converged():
+                break
+        return results
+
+    own_pool = executor is None
+    pool = make_process_pool(jobs) if own_pool else executor
+    batch = jobs if jobs > 1 else (os.cpu_count() or 1)
+    try:
+        for start in range(0, len(inits), batch):
+            chunk = inits[start : start + batch]
+            results.extend(pool.map(_solve_restart, repeat(problem), chunk))
+            if converged():
+                break
+    finally:
+        if own_pool:
+            pool.shutdown()
+    return results
+
+
 def impendance_fit(
     data: EISData,
     n_groups: int = 2,
@@ -310,12 +612,16 @@ def impendance_fit(
     resistance_branch_bounds: tuple[float, float] | None = None,
     exponent_bounds: tuple[float, float] | None = None,
     weighting: str = "modulus",
+    n_jobs: int | None = 1,
+    executor: Executor | None = None,
+    early_stop: int | None = None,
 ) -> FitResults:
     r"""Bounded TRF least-squares fit of the equivalent circuit to ``data``.
 
     **Objective.** With measured :math:`Z_k` and model
     :math:`\hat{Z}_k = Z_{\mathrm{pred}}(\omega_k; \mathbf{p})`, residuals are the
-    stacked real and imaginary parts of the difference. Soft penalties keep Nyquist arc centers inside the
+    stacked real and imaginary parts of the difference. Soft penalties keep
+    Nyquist arc centers inside the
     measured :math:`Z'` range.
 
     **Reparameterization.** Capacitances enter as non-negative increments
@@ -356,8 +662,9 @@ def impendance_fit(
     constraint_tol : float
         Tolerance for declaring constraints satisfied.
     inductance_bounds : bool
-        Default ``False`` (only :math:`L \ge 0`). If ``True``, set signed box bounds on :math:`L` from a frequency-weighted
-        slope of :math:`\mathrm{Im}(Z)` vs :math:`\omega` (see
+        Default ``False`` (only :math:`L \ge 0`). If ``True``, set signed box
+        bounds on :math:`L` from a frequency-weighted slope of
+        :math:`\mathrm{Im}(Z)` vs :math:`\omega` (see
         :func:`estimate_inductance_from_imag`).
     inductance_margin : float
         Margin factor for ``L`` bounds from the slope estimate (default ``1.1``).
@@ -375,6 +682,16 @@ def impendance_fit(
         ``"modulus"`` (default): residuals divided by :math:`|Z_k|`, i.e. the
         relative error is minimised and every decade of frequency contributes.
         ``"unit"``: unweighted residuals (behaviour of version 0.1).
+    n_jobs : int, optional
+        Worker processes for the restarts (``1``: sequential, default; ``-1``:
+        all cores). Results do not depend on ``n_jobs`` unless ``early_stop`` is
+        set. On Windows/macOS the calling script needs an
+        ``if __name__ == "__main__":`` guard.
+    executor : concurrent.futures.Executor, optional
+        Reuse an existing process pool instead of creating one per call.
+    early_stop : int, optional
+        Stop once this many restarts have reached the best cost (relative
+        tolerance ``1e-6``). ``None`` (default) runs all restarts.
 
     Returns
     -------
@@ -399,7 +716,6 @@ def impendance_fit(
         W = np.ones(Y.shape, dtype=float)
     else:
         raise ValueError(f"Unknown weighting {weighting!r}; use 'modulus' or 'unit'.")
-    W_rows = np.concatenate([W, W])
 
     z_min = float(np.min(data.Real))
     z_max = float(np.max(data.Real))
@@ -516,186 +832,24 @@ def impendance_fit(
             parameters_init[e_slice], exp_lo, exp_hi
         )
 
-    scipy_bounds = Bounds(lower, upper)
-    linear_constraint = _build_center_linear_constraint(
-        n_params, head, n_groups, z_min, z_max
+    problem = _FitProblem(
+        X,
+        Y,
+        W,
+        complex_fit=complex_fit,
+        n_groups=n_groups,
+        z_min=z_min,
+        z_max=z_max,
+        margin=margin,
+        margin_weight=margin_weight,
+        lower=lower,
+        upper=upper,
+        tau_bounds=resolved_tau_bounds,
+        max_nfev=max_nfev,
+        polish=polish,
+        polish_maxiter=polish_maxiter,
+        constraint_tol=constraint_tol,
     )
-
-    def _branch_params(p: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        resistances = p[r_slice]
-        tau = np.cumsum(p[dtau_slice])
-        capacitances = tau / resistances
-        exponents = p[e_slice] if complex_fit else np.ones(n_groups)
-        return resistances, capacitances, exponents
-
-    def _model_func(freq, p: np.ndarray):
-        resistance_source = p[0]
-        inductance = p[1]
-        inductance_exponent = p[2] if complex_fit else 1.0
-        resistances, capacitances, exponents = _branch_params(p)
-        return circuit_impedance(
-            freq,
-            resistance_source=resistance_source,
-            inductance=inductance,
-            inductance_exponent=inductance_exponent,
-            resistances=resistances,
-            capacitances=capacitances,
-            exponents=exponents,
-        )
-
-    def _impedance_residuals(p: np.ndarray) -> np.ndarray:
-        Y_pred = _model_func(X, p)
-        return np.concatenate([Y_pred.real - Y.real, Y_pred.imag - Y.imag])
-
-    def _margin_residuals(p: np.ndarray) -> np.ndarray:
-        c_lo, c_hi = _center_positions(p, r_slice)
-        pen_margin_lo = max(0.0, margin + (c_lo - z_min))
-        pen_margin_hi = max(0.0, margin - (z_max - c_hi))
-        return np.array(
-            [margin_weight * pen_margin_lo, margin_weight * pen_margin_hi],
-            dtype=float,
-        )
-
-    _tau_chain = np.tri(n_groups)
-
-    def _impedance_jacobian(p: np.ndarray) -> np.ndarray:
-        inductance_exponent = p[2] if complex_fit else 1.0
-        resistances, capacitances, exponents = _branch_params(p)
-        tau = np.cumsum(p[dtau_slice])
-        R = resistances
-
-        g = circuit_impedance_parameter_gradient(
-            X,
-            resistance_source=p[0],
-            inductance=p[1],
-            inductance_exponent=inductance_exponent,
-            resistances=resistances,
-            capacitances=capacitances,
-            exponents=exponents,
-        )
-
-        dZ_dtau = g["capacitances"] / R
-        dZ_dR = g["resistances"] - g["capacitances"] * (tau / R**2)
-
-        M = X.size
-        J = np.empty((M, n_params), dtype=complex)
-        J[:, 0] = g["resistance_source"]
-        J[:, 1] = g["inductance"]
-        if complex_fit:
-            J[:, 2] = g["inductance_exponent"]
-        J[:, r_slice] = dZ_dR
-        J[:, dtau_slice] = dZ_dtau @ _tau_chain
-        if complex_fit:
-            J[:, e_slice] = g["exponents"]
-
-        return np.vstack([J.real, J.imag])
-
-    def _margin_jacobian_rows(p: np.ndarray) -> np.ndarray:
-        rows = np.zeros((2, n_params))
-        c_lo, c_hi = _center_positions(p, r_slice)
-        pen_margin_lo = margin + (c_lo - z_min)
-        pen_margin_hi = margin - (z_max - c_hi)
-
-        if pen_margin_lo > 0:
-            rows[0, 0] = margin_weight
-
-        if pen_margin_hi > 0:
-            rows[1, 0] = margin_weight
-            for i in range(n_groups - 1):
-                rows[1, head + i] = margin_weight
-            rows[1, head + n_groups - 1] = 0.5 * margin_weight
-
-        return rows
-
-    _eval_cache: dict = {"p": None, "r": None, "J": None}
-
-    def _evaluate(p: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        r = np.concatenate([W_rows * _impedance_residuals(p), _margin_residuals(p)])
-        J = np.vstack(
-            [W_rows[:, None] * _impedance_jacobian(p), _margin_jacobian_rows(p)]
-        )
-        return r, J
-
-    def _total_cost(p: np.ndarray) -> float:
-        r, _ = _evaluate(p)
-        return 0.5 * float(np.dot(r, r))
-
-    def _residuals(p: np.ndarray) -> np.ndarray:
-        p = np.asarray(p, dtype=float)
-        r, J = _evaluate(p)
-        _eval_cache["p"] = p.copy()
-        _eval_cache["r"] = r
-        _eval_cache["J"] = J
-        return r
-
-    def _jacobian(p: np.ndarray) -> np.ndarray:
-        p = np.asarray(p, dtype=float)
-        cached_p = _eval_cache["p"]
-        if cached_p is not None and cached_p.shape == p.shape and np.all(cached_p == p):
-            return _eval_cache["J"]
-        r, J = _evaluate(p)
-        _eval_cache["p"] = p.copy()
-        _eval_cache["r"] = r
-        _eval_cache["J"] = J
-        return J
-
-    def _polish_if_infeasible(p: np.ndarray, cost: float) -> tuple[np.ndarray, float]:
-        p = _project_feasible(
-            p,
-            z_min,
-            z_max,
-            head,
-            r_slice,
-            lower,
-            upper,
-            n_groups,
-            dtau_slice=dtau_slice,
-            tau_bounds=resolved_tau_bounds,
-        )
-        if _constraints_satisfied(p, r_slice, z_min, z_max, constraint_tol):
-            return p, _total_cost(p)
-
-        if not polish:
-            return p, cost
-
-        def objective(x: np.ndarray) -> float:
-            return _total_cost(x)
-
-        def grad(x: np.ndarray) -> np.ndarray:
-            r, J = _evaluate(x)
-            return J.T @ r
-
-        try:
-            res_opt = minimize(
-                objective,
-                p,
-                method="trust-constr",
-                jac=grad,
-                bounds=scipy_bounds,
-                constraints=[linear_constraint],
-                options={"maxiter": polish_maxiter, "verbose": 0},
-            )
-            p_out = _project_feasible(
-                res_opt.x,
-                z_min,
-                z_max,
-                head,
-                r_slice,
-                lower,
-                upper,
-                n_groups,
-                dtau_slice=dtau_slice,
-                tau_bounds=resolved_tau_bounds,
-            )
-            cost_out = _total_cost(p_out)
-            if cost_out <= cost or _constraints_satisfied(
-                p_out, r_slice, z_min, z_max, constraint_tol
-            ):
-                return p_out, cost_out
-        except (ValueError, np.linalg.LinAlgError) as exc:
-            warnings.warn(f"Constraint polish failed: {exc}", stacklevel=3)
-
-        return p, cost
 
     def _perturb(base: np.ndarray, local_exponents: bool) -> np.ndarray:
         init = base * np.exp(rng.normal(scale=sigma, size=n_params))
@@ -717,111 +871,58 @@ def impendance_fit(
                 init[e_slice] = rng.uniform(
                     _CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX, size=n_groups
                 )
-        return _project_feasible(
-            np.clip(init, lower, upper),
-            z_min,
-            z_max,
-            head,
-            r_slice,
-            lower,
-            upper,
-            n_groups,
-            dtau_slice=dtau_slice,
-            tau_bounds=resolved_tau_bounds,
-        )
+        return problem.project(np.clip(init, lower, upper))
 
-    best_cost: float | None = None
-    best_x: np.ndarray | None = None
-    polish_count = 0
-    failures: list[str] = []
+    base_init = problem.project(parameters_init.copy())
+    # Half of the restarts keep the exponents local, half explore globally.
+    # Drawn up front so the result does not depend on n_jobs.
+    inits = [base_init] + [
+        _perturb(base_init, local_exponents=(i % 2 == 1))
+        for i in range(1, max(1, n_restarts))
+    ]
+    results = _run_restarts(problem, inits, n_jobs, executor, early_stop)
 
-    base_init = _project_feasible(
-        parameters_init.copy(),
-        z_min,
-        z_max,
-        head,
-        r_slice,
-        lower,
-        upper,
-        n_groups,
-        dtau_slice=dtau_slice,
-        tau_bounds=resolved_tau_bounds,
-    )
-
-    for i in range(max(1, n_restarts)):
-        # Half of the restarts keep the exponents local, half explore globally.
-        init = base_init if i == 0 else _perturb(base_init, local_exponents=(i % 2 == 1))
-        try:
-            res_ls = least_squares(
-                _residuals,
-                init,
-                jac=_jacobian,
-                method="trf",
-                bounds=(lower, upper),
-                max_nfev=max_nfev,
-                x_scale="jac",
-            )
-        except (ValueError, np.linalg.LinAlgError) as exc:
-            failures.append(f"{type(exc).__name__}: {exc}")
-            continue
-
-        p = _project_feasible(
-            res_ls.x.copy(),
-            z_min,
-            z_max,
-            head,
-            r_slice,
-            lower,
-            upper,
-            n_groups,
-            dtau_slice=dtau_slice,
-            tau_bounds=resolved_tau_bounds,
-        )
-        cost = _total_cost(p)
-
-        if not _constraints_satisfied(p, r_slice, z_min, z_max, constraint_tol):
-            polish_count += 1
-            p, cost = _polish_if_infeasible(p, cost)
-
-        if best_cost is None or cost < best_cost:
-            best_cost = cost
-            best_x = p.copy()
-
-    if best_x is None:
+    failures = [r["error"] for r in results if "error" in r]
+    solved = [r for r in results if "error" not in r]
+    if not solved:
         raise RuntimeError(
             f"All {len(failures)} restarts failed to produce a fit. "
             f"First error: {failures[0] if failures else 'unknown'}"
         )
     if failures:
         warnings.warn(
-            f"{len(failures)} of {max(1, n_restarts)} restarts failed "
+            f"{len(failures)} of {len(results)} restarts failed "
             f"(first: {failures[0]}).",
             stacklevel=2,
         )
+    best = solved[0]
+    for r in solved[1:]:
+        if r["cost"] < best["cost"]:
+            best = r
 
+    best_x = best["x"].copy()
+    diff = problem.model(best_x) - Y
+    polish_count = sum(r["polished"] for r in solved)
     res_ls = OptimizeResult(
         x=best_x,
-        fun=_impedance_residuals(best_x),
-        cost=best_cost,
+        fun=np.concatenate([diff.real, diff.imag]),
+        cost=best["cost"],
         success=True,
-        message=f"hybrid TRF ({n_restarts} restarts, {polish_count} polished)",
-        nfev=0,
-        njev=0,
+        status=best["status"],
+        message=(
+            f"hybrid TRF ({len(results)} of {max(1, n_restarts)} restarts, "
+            f"{polish_count} polished)"
+        ),
+        nfev=sum(r["nfev"] for r in solved),
+        njev=sum(r["njev"] for r in solved),
+        jac=None,
+        grad=None,
+        optimality=None,
+        active_mask=None,
     )
-    for attr, default in (
-        ("jac", None),
-        ("grad", None),
-        ("optimality", None),
-        ("active_mask", None),
-        ("status", 0),
-    ):
-        if not hasattr(res_ls, attr):
-            setattr(res_ls, attr, default)
 
     tau = np.cumsum(res_ls.x[dtau_slice])
     R = res_ls.x[r_slice]
     res_ls.x[dtau_slice] = tau / R
 
-    res = FitResults(res_ls, n_groups, complex_fit)
-
-    return res
+    return FitResults(res_ls, n_groups, complex_fit)

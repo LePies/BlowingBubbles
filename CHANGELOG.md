@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **`complex_fit=False` never produced a fit** (residual/Jacobian shape
+  mismatch hidden by a blanket `except`). It now means ideal elements
+  (`e_i = n_L = 1`) with complex residuals.
+- **Column detection** matched single letters (`"Imaginary"` was taken as the
+  real part). Matching is now token-based, ambiguous names raise, and
+  `EISData(..., columns=(real, imag, freq))` sets them explicitly.
+- **`Rtot`/`Rs` depended on row order**; `Rs` is interpolated at the
+  inductive zero crossing.
+- **`EISData` arithmetic** squared the frequency column (`*`, `/`) or added
+  extra columns (`+`, `-`); it now operates on the complex impedance.
+- `CircuitParameters.from_array` (missing `cls`); `__dict__` method broke
+  `copy`/`pickle` and is renamed `as_dict()`.
+- `fit_circuit` kept a branch even when it raised the cost; it now keeps the
+  previous fit and stops expanding.
+- Spectra without an interior `-Im(Z)` peak crashed; `initial_fit` falls back
+  to one branch and floors zero widths.
+- `impendance_fit` no longer mutates `initial_parameters`; failed restarts are
+  reported instead of silently skipped. `plot_full_fit` returns its axes.
+
+### Performance
+- Fit core rewritten around a cached evaluator: the forward model is computed
+  once per parameter vector, the Jacobian reuses its intermediates, `log(jω)`
+  is precomputed and argument validation is skipped in the hot loop
+  (~1.6–3x less CPU per function evaluation).
+- New `n_jobs` (process-parallel restarts, results independent of `n_jobs`)
+  and `early_stop` options on `impendance_fit`, `fit_circuit` and
+  `EISData.fit`; `make_process_pool()` creates a reusable pool with
+  single-threaded BLAS workers.
+- matplotlib is imported lazily.
+
+### Changed
+- `circuit_impedance` accepts lists and NumPy scalars and raises
+  `TypeError`/`ValueError` instead of `AssertionError`.
+
 ## 0.2.0 (2026-10-30)
 
 Corrections found in a review of the method against synthetic ground truth.

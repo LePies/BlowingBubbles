@@ -35,49 +35,35 @@ def circuit_assert_arguments(
 
     Raises
     ------
-    AssertionError
-        If types or branch array shapes are inconsistent.
+    TypeError
+        If an argument is not numeric.
+    ValueError
+        If branch array shapes are inconsistent.
     """
-    assert isinstance(freq, (float, int, np.ndarray)), (
-        f"freq must be a float, int or np.ndarray. Current type: {type(freq)}"
-    )
-    assert isinstance(resistance_source, (float, int)), (
-        "resistance_source must be a float, int. "
-        f"Current type: {type(resistance_source)}"
-    )
-    assert isinstance(inductance, (float, int)), (
-        f"inductance must be a float, int. Current type: {type(inductance)}"
-    )
-    assert isinstance(inductance_exponent, (float, int)), (
-        "inductance_exponent must be a float, int. "
-        f"Current type: {type(inductance_exponent)}"
-    )
-    assert isinstance(resistances, np.ndarray), (
-        f"resistances must be a np.ndarray. Current type: {type(resistances)}"
-    )
-    assert isinstance(capacitances, np.ndarray), (
-        f"capacitances must be a np.ndarray. Current type: {type(capacitances)}"
-    )
-    assert isinstance(exponents, (np.ndarray, type(None))), (
-        f"exponents must be a np.ndarray or NoneType. Current type: {type(exponents)}"
-    )
+    if isinstance(freq, (list, tuple)):
+        freq = np.asarray(freq)
+    isfloat = np.ndim(freq) == 0
+    try:
+        freq = np.atleast_1d(np.asarray(freq, dtype=float))
+        resistance_source = float(resistance_source)
+        inductance = float(inductance)
+        inductance_exponent = float(inductance_exponent)
+        resistances = np.asarray(resistances, dtype=float)
+        capacitances = np.asarray(capacitances, dtype=float)
+        exponents = (
+            np.ones_like(capacitances)
+            if exponents is None
+            else np.asarray(exponents, dtype=float)
+        )
+    except (TypeError, ValueError) as exc:
+        raise TypeError(f"Circuit arguments must be numeric: {exc}") from exc
 
-    if exponents is None:
-        exponents = np.ones_like(capacitances)
-
-    assert resistances.shape == capacitances.shape == exponents.shape, (
-        f"resistances, capacitances and exponents must have the same shape. "
-        f"Current shapes: {resistances.shape}, {capacitances.shape}, "
-        f"{exponents.shape}"
-    )
-
-    isfloat = False
-
-    if isinstance(freq, (float, int)):
-        freq = np.array([freq])
-        isfloat = True
-    else:
-        freq = np.array(freq)
+    if not resistances.shape == capacitances.shape == exponents.shape:
+        raise ValueError(
+            "resistances, capacitances and exponents must have the same shape. "
+            f"Current shapes: {resistances.shape}, {capacitances.shape}, "
+            f"{exponents.shape}"
+        )
 
     return (
         freq,
@@ -151,16 +137,16 @@ def circuit_impedance(
         exponents,
     )
 
-    omega = 2 * np.pi * freq
+    s = 1j * (2 * np.pi * freq)
 
-    parralel_impedances = resistances / (
-        1 + resistances * capacitances * (1j * omega[:, None]) ** exponents
+    parallel_impedances = resistances / (
+        1 + resistances * capacitances * s[:, None] ** exponents
     )
 
     series_impedances = (
         resistance_source
-        + (1j * omega) ** inductance_exponent * inductance
-        + np.sum(parralel_impedances, axis=1)
+        + s**inductance_exponent * inductance
+        + np.sum(parallel_impedances, axis=1)
     )
 
     if isfloat:
@@ -214,37 +200,18 @@ def circuit_impedance_parameter_gradient(
         exponents,
     )
 
-    gradient = {
-        "resistance_source": np.zeros_like(freq),
-        "inductance": np.zeros_like(freq),
-        "inductance_exponent": np.zeros_like(freq),
-        "resistances": np.zeros((freq.shape[0], resistances.shape[0])),
-        "capacitances": np.zeros((freq.shape[0], capacitances.shape[0])),
-        "exponents": np.zeros((freq.shape[0], exponents.shape[0])),
+    s = 1j * (2 * np.pi * freq)
+    log_s = np.log(s)
+    s_l = s**inductance_exponent
+    S = s[:, None] ** exponents
+    D2 = (1 + resistances * capacitances * S) ** 2
+    d_capacitances = -(resistances**2) * S / D2
+
+    return {
+        "resistance_source": np.ones_like(freq),
+        "inductance": s_l,
+        "inductance_exponent": s_l * log_s * inductance,
+        "resistances": 1 / D2,
+        "capacitances": d_capacitances,
+        "exponents": d_capacitances * capacitances * log_s[:, None],
     }
-
-    omega = 2 * np.pi * freq
-
-    gradient["resistance_source"] = np.ones_like(freq)
-    gradient["inductance"] = (1j * omega) ** inductance_exponent
-    gradient["inductance_exponent"] = (
-        (1j * omega) ** inductance_exponent * np.log(1j * omega) * inductance
-    )
-
-    gradient["resistances"] = (
-        1 / (1 + resistances * capacitances * (1j * omega[:, None]) ** exponents) ** 2
-    )
-    gradient["capacitances"] = (
-        -(resistances**2)
-        * (1j * omega[:, None]) ** exponents
-        / (1 + resistances * capacitances * (1j * omega[:, None]) ** exponents) ** 2
-    )
-    gradient["exponents"] = (
-        -(resistances**2)
-        * capacitances
-        * (1j * omega[:, None]) ** exponents
-        * np.log(1j * omega[:, None])
-        / (1 + resistances * capacitances * (1j * omega[:, None]) ** exponents) ** 2
-    )
-
-    return gradient

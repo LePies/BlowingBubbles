@@ -377,6 +377,8 @@ class EISData:
         resistance_branch_bounds: tuple[float, float] | None = None,
         exponent_bounds: tuple[float, float] | None = None,
         weighting: str = "modulus",
+        n_jobs: int | None = 1,
+        early_stop: int | None = None,
     ) -> FitResults:
         r"""Fit the parametric R–CPE ladder to this spectrum.
 
@@ -403,7 +405,14 @@ class EISData:
             Bounds on CPE exponents :math:`\alpha_i` and :math:`\beta`.
         weighting : {"modulus", "unit"}
             Residual weighting (default ``"modulus"``, i.e. relative error).
-
+        n_jobs : int, optional
+            Worker processes for the restarts (``1``: sequential, default; ``-1``:
+            all cores). Scripts using ``n_jobs != 1`` on Windows/macOS need an
+            ``if __name__ == "__main__":`` guard.
+        early_stop : int, optional
+            Stop the restarts of each sub-fit once this many reached the best cost.
+            ``None`` (default) runs all restarts.
+    
         Returns
         -------
         FitResults
@@ -423,6 +432,8 @@ class EISData:
             resistance_branch_bounds=resistance_branch_bounds,
             exponent_bounds=exponent_bounds,
             weighting=weighting,
+            n_jobs=n_jobs,
+            early_stop=early_stop,
         )
 
         return res
@@ -532,6 +543,8 @@ def fit_circuit(
     resistance_branch_bounds: tuple[float, float] | None = None,
     exponent_bounds: tuple[float, float] | None = None,
     weighting: str = "modulus",
+    n_jobs: int | None = 1,
+    early_stop: int | None = None,
 ) -> FitResults:
     """Fit an R–CPE ladder to *data* using iterative fast branch building."""
     from blowing_bubbles.scripts.fit_circuit import fit_circuit as _run_fit
@@ -548,7 +561,10 @@ def fit_circuit(
         resistance_branch_bounds=resistance_branch_bounds,
         exponent_bounds=exponent_bounds,
         weighting=weighting,
+        n_jobs=n_jobs,
+        early_stop=early_stop,
     )
+
 
 def quick_fit(
     data: EISData,
