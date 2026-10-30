@@ -119,6 +119,11 @@ def tau_bounds_from_frequencies(freq: np.ndarray) -> tuple[float, float]:
 _INDUCTANCE_EST_TOL = 1e-15
 _CPE_EXPONENT_MIN = 0.2
 _CPE_EXPONENT_MAX = 1.0
+# Default lower bounds on R_i and tau_1, relative to the data scales (|Z'| span
+# and 1/omega_max). Strictly positive so C_i = tau_i / R_i stays finite and > 0.
+_POSITIVE_FLOOR_REL = 1e-12
+# Smallest magnitude of a perturbed restart start value.
+_PERTURB_MIN_ABS = 1e-9
 
 
 def estimate_inductance_from_imag(
@@ -186,6 +191,70 @@ def _normalize_tau_bounds(
     if tau_lo > tau_hi:
         tau_lo, tau_hi = tau_hi, tau_lo
     return tau_lo, tau_hi
+
+
+def _positive_floor(
+    floor: float,
+    user_lo: float | None = None,
+    user_hi: float | None = None,
+) -> float:
+    """Strictly positive lower bound that never tightens user-supplied bounds.
+
+    Returns ``max(floor', user_lo)`` where ``floor'`` is *floor* reduced, if
+    needed, to stay at or below a positive ``user_lo`` and below a positive
+    ``user_hi``. A user lower bound of ``0`` (or less) is replaced by the floor.
+    """
+    lo = float(floor)
+    if user_lo is not None and user_lo > 0:
+        lo = min(lo, float(user_lo))
+    if user_hi is not None and user_hi > 0:
+        lo = min(lo, 0.5 * float(user_hi))
+    if user_lo is not None:
+        lo = max(lo, float(user_lo))
+    return lo
+
+
+def _perturb_init(
+    base: np.ndarray,
+    rng: np.random.Generator,
+    sigma: float,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    *,
+    complex_fit: bool,
+    n_groups: int,
+    local_exponents: bool,
+) -> np.ndarray:
+    """Random restart start point around *base*, clipped to ``[lower, upper]``.
+
+    All entries get a log-normal multiplicative perturbation, which preserves
+    their sign; magnitudes are floored at ``_PERTURB_MIN_ABS`` (zeros become
+    positive), so a negative inductance allowed by the bounds survives. With
+    ``complex_fit`` the exponents (``n_L`` and ``e_i``) are instead drawn
+    around *base* (``local_exponents=True``) or uniformly within their bounds.
+    The number and order of random draws depend only on the arguments, so a
+    seeded generator gives a reproducible sequence of starts.
+    """
+    init = base * np.exp(rng.normal(scale=sigma, size=base.size))
+    init = np.where(
+        init < 0,
+        np.minimum(init, -_PERTURB_MIN_ABS),
+        np.maximum(init, _PERTURB_MIN_ABS),
+    )
+    if complex_fit:
+        head = 3
+        e_slice = slice(head + 2 * n_groups, head + 3 * n_groups)
+        if local_exponents:
+            # Stay near the base exponents (refinement around a seed).
+            init[2] = base[2] + rng.normal(scale=0.5 * sigma)
+            init[e_slice] = base[e_slice] + rng.normal(
+                scale=0.5 * sigma, size=n_groups
+            )
+        else:
+            # Global exploration of the exponents within their bounds.
+            init[2] = rng.uniform(lower[2], upper[2])
+            init[e_slice] = rng.uniform(lower[e_slice], upper[e_slice])
+    return np.clip(init, lower, upper)
 
 
 def _project_dtau(
@@ -501,6 +570,59 @@ def _solve_restart(problem: _FitProblem, init: np.ndarray) -> dict[str, Any]:
     }
 
 
+def _parameter_covariance(problem: _FitProblem, x: np.ndarray) -> np.ndarray:
+    r"""Linearized covariance of the reported parameters at the solution *x*.
+
+    Uses the weighted impedance Jacobian :math:`J` (margin-penalty rows
+    excluded) and the residual variance
+    :math:`s^2 = \sum r_k^2 / \max(2M - p, 1)` of the weighted residuals:
+    :math:`\Sigma_x = s^2 (J^T J)^+`. The pseudo-inverse (computed from a
+    column-scaled SVD) handles rank deficiency. :math:`\Sigma_x` is mapped to
+    the :meth:`CircuitParameters.to_array` layout
+    ``[R_s, L, n_L, R_1..R_n, C_1..C_n, e_1..e_n]`` with the Jacobian
+    :math:`G` of :math:`(R, \Delta\tau) \mapsto C_i = \tau_i / R_i`,
+    :math:`\tau_i = \sum_{j \le i} \Delta\tau_j`: :math:`G \Sigma_x G^T`.
+    Parameters fixed by the model (``n_L`` and ``e_i`` when
+    ``complex_fit=False``) get zero variance. Branches are in optimizer
+    order (``x`` is *not* yet sorted by tau).
+    """
+    m = problem.m
+    n = problem.n_groups
+    n_opt = problem.n_params
+    J = problem.jacobian(x)[: 2 * m]
+    r = problem.residuals(x)[: 2 * m]
+    dof = max(2 * m - n_opt, 1)
+    s2 = float(np.dot(r, r)) / dof
+
+    # Column scaling keeps the SVD cutoff meaningful when parameters differ by
+    # many orders of magnitude (Ohm vs. seconds).
+    scale = np.linalg.norm(J, axis=0)
+    scale[scale == 0] = 1.0
+    _, sv, vt = np.linalg.svd(J / scale, full_matrices=False)
+    cutoff = np.finfo(float).eps * max(J.shape) * (sv[0] if sv.size else 0.0)
+    inv_sv2 = np.zeros_like(sv)
+    keep = sv > cutoff
+    inv_sv2[keep] = 1.0 / sv[keep] ** 2
+    cov_opt = (vt.T * inv_sv2) @ vt
+    cov_opt = s2 * cov_opt / np.outer(scale, scale)
+
+    # G maps optimizer coordinates to [Rs, L, nL, R, C, e].
+    R = x[problem.r_slice]
+    tau = np.cumsum(x[problem.dtau_slice])
+    G = np.zeros((3 + 3 * n, n_opt))
+    G[0, 0] = 1.0
+    G[1, 1] = 1.0
+    if problem.complex_fit:
+        G[2, 2] = 1.0
+        G[3 + 2 * n :, problem.e_slice] = np.eye(n)
+    G[3 : 3 + n, problem.r_slice] = np.eye(n)
+    # dC_i/dR_i = -tau_i / R_i^2 ; dC_i/d(dtau_j) = 1 / R_i for j <= i.
+    G[3 + n : 3 + 2 * n, problem.r_slice] = np.diag(-tau / R**2)
+    G[3 + n : 3 + 2 * n, problem.dtau_slice] = np.tri(n) / R[:, None]
+    cov = G @ cov_opt @ G.T
+    return 0.5 * (cov + cov.T)
+
+
 _BLAS_THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
 
 
@@ -589,7 +711,7 @@ def _run_restarts(
     return results
 
 
-def impendance_fit(
+def impedance_fit(
     data: EISData,
     n_groups: int = 2,
     complex_fit: bool = False,
@@ -626,7 +748,24 @@ def impendance_fit(
 
     **Reparameterization.** Capacitances enter as non-negative increments
     :math:`\Delta\tau_i` with :math:`\tau_i = \sum_{j \le i} \Delta\tau_j` and
-    :math:`C_i = \tau_i / R_i`, which enforces ordered time constants.
+    :math:`C_i = \tau_i / R_i`, which enforces ordered time constants. The
+    branch resistances :math:`R_i` and :math:`\tau_1` have tiny strictly
+    positive default lower bounds (:math:`10^{-12}` of the :math:`Z'` span and
+    of :math:`1/\omega_{\max}`), so every :math:`C_i` is finite and positive.
+
+    **Uncertainties.** The returned :class:`FitResults` carries
+    ``covariance``, ``standard_errors`` and ``correlation`` of the reported
+    parameters (:meth:`CircuitParameters.to_array` order). They come from a
+    local linearization at the best solution,
+    :math:`s^2 (J^T J)^{+}`, with :math:`J` the Jacobian of the *weighted*
+    impedance residuals and :math:`s^2` their sum of squares divided by
+    :math:`2M - p` (:math:`M` frequencies, :math:`p` free parameters). This
+    assumes independent residuals whose scale matches ``weighting`` (e.g.
+    relative errors for ``"modulus"``) and a well-converged fit; it ignores
+    active box bounds, the Nyquist center constraints and the soft margin
+    penalty, so parameters sitting on a bound get unreliable errors.
+    Parameters fixed by the model (:math:`n_L`, :math:`e_i` with
+    ``complex_fit=False``) have zero variance.
 
     Parameters
     ----------
@@ -642,12 +781,19 @@ def impendance_fit(
         Starting point; branch count must match ``n_groups``.
     n_restarts : int
         Number of log-normal perturbation restarts (best cost is kept).
+        Perturbations keep the sign of every parameter (e.g. a negative
+        :math:`L`); with ``complex_fit`` half of the restarts draw the
+        exponents uniformly within their bounds.
     seed : int, optional
         RNG seed for restarts.
     sigma : float
         Log-normal scale for restart perturbations.
     tau_bounds : tuple of float, optional
-        ``(tau_min, tau_max)`` for each :math:`\tau_i`; default from data frequencies.
+        ``(tau_min, tau_max)`` for each :math:`\tau_i`. ``None`` (default)
+        leaves the time constants unbounded (apart from the tiny positive
+        floor on :math:`\tau_1`). Use :func:`tau_bounds_from_frequencies`
+        to restrict them to the measured window,
+        ``tau_bounds=tau_bounds_from_frequencies(data.Freq)``.
     penalty_margin_weight, penalty_weight : float
         Weight on soft Nyquist margin violations.
     z_margin_frac, z_margin_abs : float
@@ -667,13 +813,15 @@ def impendance_fit(
         :math:`\mathrm{Im}(Z)` vs :math:`\omega` (see
         :func:`estimate_inductance_from_imag`).
     inductance_margin : float
-        Margin factor for ``L`` bounds from the slope estimate (default ``1.1``).
+        Margin factor for ``L`` bounds from the slope estimate (default ``2.0``).
     resistance_source_bounds : tuple of float, optional
         ``(R_s_min, R_s_max)`` box bounds for the source resistance :math:`R_s`.
         If ``None``, defaults to ``(0, \infty)``.
     resistance_branch_bounds : tuple of float, optional
         ``(R_min, R_max)`` uniform box bounds for all branch resistances.
-        If ``None``, defaults to ``(0, \infty)``.
+        If ``None``, defaults to ``(\epsilon, \infty)`` with
+        :math:`\epsilon = 10^{-12}\,(\max Z' - \min Z')`. A positive
+        ``R_min`` replaces :math:`\epsilon`; ``R_min <= 0`` keeps it.
     exponent_bounds : tuple of float, optional
         ``(e_min, e_max)`` uniform box bounds for all CPE exponents (branch and
         inductance exponent). Only used when ``complex_fit=True``. Overrides
@@ -696,7 +844,11 @@ def impendance_fit(
     Returns
     -------
     FitResults
-        Optimized parameters and residual vectors.
+        Optimized parameters, residual vectors and parameter uncertainties.
+
+    Notes
+    -----
+    ``impendance_fit`` is a backward-compatible alias of this function.
     """
     if n_groups < 1:
         raise ValueError(f"n_groups must be >= 1, got {n_groups}.")
@@ -775,12 +927,9 @@ def impendance_fit(
                 "initial_parameters.exponents has shape "
                 f"{e.shape}, expected ({n_groups},)"
             )
-            parameters_init[2] = np.clip(
-                initial_parameters.inductance_exponent,
-                _CPE_EXPONENT_MIN,
-                _CPE_EXPONENT_MAX,
-            )
-            parameters_init[e_slice] = np.clip(e, _CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX)
+            # Clipped to the (possibly user-set) exponent bounds below.
+            parameters_init[2] = initial_parameters.inductance_exponent
+            parameters_init[e_slice] = e
 
         if resolved_tau_bounds is not None:
             tau_lo, tau_hi = resolved_tau_bounds
@@ -795,6 +944,17 @@ def impendance_fit(
         upper[2] = _CPE_EXPONENT_MAX
         lower[e_slice] = _CPE_EXPONENT_MIN
         upper[e_slice] = _CPE_EXPONENT_MAX
+
+    # Strictly positive R_i and tau_1 (hence every tau_i) keep C_i = tau_i / R_i
+    # finite and positive, also after _project_feasible clips to the bounds.
+    r_floor = _POSITIVE_FLOOR_REL * z_span
+    f_max = float(np.max(X)) if np.size(X) else 0.0
+    f_ref = f_max if f_max > 0 else 1.0
+    tau_floor = _POSITIVE_FLOOR_REL / (2.0 * np.pi * f_ref)
+    r_user = resistance_branch_bounds or (None, None)
+    lower[r_slice] = _positive_floor(r_floor, *r_user)
+    tau_user = resolved_tau_bounds or (None, None)
+    lower[dtau_slice.start] = _positive_floor(tau_floor, *tau_user)
 
     if resolved_tau_bounds is not None and n_groups > 0:
         tau_lo, tau_hi = resolved_tau_bounds
@@ -851,33 +1011,22 @@ def impendance_fit(
         constraint_tol=constraint_tol,
     )
 
-    def _perturb(base: np.ndarray, local_exponents: bool) -> np.ndarray:
-        init = base * np.exp(rng.normal(scale=sigma, size=n_params))
-        init = np.maximum(init, 1e-9)
-        if complex_fit:
-            if local_exponents:
-                # Stay near the base exponents (refinement around a seed).
-                init[2] = base[2] + rng.normal(scale=0.5 * sigma)
-                init[e_slice] = base[e_slice] + rng.normal(
-                    scale=0.5 * sigma, size=n_groups
-                )
-                init[2] = np.clip(init[2], _CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX)
-                init[e_slice] = np.clip(
-                    init[e_slice], _CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX
-                )
-            else:
-                # Global exploration of the exponents.
-                init[2] = rng.uniform(_CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX)
-                init[e_slice] = rng.uniform(
-                    _CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX, size=n_groups
-                )
-        return problem.project(np.clip(init, lower, upper))
-
     base_init = problem.project(parameters_init.copy())
     # Half of the restarts keep the exponents local, half explore globally.
     # Drawn up front so the result does not depend on n_jobs.
     inits = [base_init] + [
-        _perturb(base_init, local_exponents=(i % 2 == 1))
+        problem.project(
+            _perturb_init(
+                base_init,
+                rng,
+                sigma,
+                lower,
+                upper,
+                complex_fit=complex_fit,
+                n_groups=n_groups,
+                local_exponents=(i % 2 == 1),
+            )
+        )
         for i in range(1, max(1, n_restarts))
     ]
     results = _run_restarts(problem, inits, n_jobs, executor, early_stop)
@@ -921,8 +1070,15 @@ def impendance_fit(
         active_mask=None,
     )
 
+    # Before x is rewritten to capacitances: covariance needs the dtau layout.
+    covariance = _parameter_covariance(problem, best_x)
+
     tau = np.cumsum(res_ls.x[dtau_slice])
     R = res_ls.x[r_slice]
     res_ls.x[dtau_slice] = tau / R
 
-    return FitResults(res_ls, n_groups, complex_fit)
+    return FitResults(res_ls, n_groups, complex_fit, covariance=covariance)
+
+
+impendance_fit = impedance_fit
+"""Backward-compatible (misspelled) alias of :func:`impedance_fit`."""
