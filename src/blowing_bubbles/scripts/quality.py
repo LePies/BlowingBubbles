@@ -33,14 +33,32 @@ def lin_kk(
     Model: :math:`Z = R_0 + j\omega L + \sum_k R_k / (1 + j\omega\tau_k)` with
     :math:`\tau_k` log-spaced over :math:`[1/\omega_{max}, 1/\omega_{min}]`,
     solved by modulus-weighted linear least squares. Starting from two
-    elements per decade, the number of elements :math:`M` is increased until :math:`\mu = 1 - \sum_{R_k<0}|R_k| /
-    \sum_{R_k\ge0}|R_k|` drops below ``c_threshold``.
+    elements per decade, the number of elements :math:`M` is increased until
+    :math:`\mu = 1 - \sum_{R_k<0}|R_k| / \sum_{R_k\ge0}|R_k|` drops below
+    ``c_threshold``.
 
     Returns a dict with ``M``, ``mu``, ``rms_rel`` (relative RMS residual) and
     ``z_fit``.
+
+    Raises
+    ------
+    ValueError
+        If ``freq`` is empty, contains non-finite or non-positive values, or
+        does not have the same shape as ``z``.
     """
     f = np.asarray(freq, dtype=float)
     z = np.asarray(z, dtype=complex)
+    if f.size == 0:
+        raise ValueError("lin_kk: freq is empty.")
+    if f.shape != z.shape:
+        raise ValueError(
+            f"lin_kk: freq and z must have the same shape, got {f.shape} and {z.shape}."
+        )
+    if not np.all(np.isfinite(f)) or np.any(f <= 0):
+        raise ValueError(
+            "lin_kk: all frequencies must be finite and > 0 (the tau grid is "
+            "log-spaced up to 1/omega_min)."
+        )
     omega = 2.0 * np.pi * f
     w = 1.0 / np.maximum(np.abs(z), np.finfo(float).tiny)
     n = f.size
@@ -51,24 +69,47 @@ def lin_kk(
     m_min = max(3, int(np.ceil(2.0 * decades)))
     m_max = max_elements if max_elements is not None else max(m_min, n // 2)
     m_min = min(m_min, m_max)
-    best = None
+
+    # Everything that does not depend on M is built once: the R_0 and L
+    # columns of the design matrix (unweighted and weighted, stacked as
+    # [real; imag]), the right-hand side and the log10 tau range. Per M only
+    # the RC basis columns are rebuilt.
+    log_tau_lo = np.log10(1.0 / omega.max())
+    log_tau_hi = np.log10(1.0 / omega.min())
+    a_fixed = np.column_stack([np.ones(n), 1j * omega])
+    aw_fixed = a_fixed * w[:, None]
+    zw = z * w
+    b = np.concatenate([zw.real, zw.imag])
+    omega_col = omega[:, None]
+    w_col = w[:, None]
+
+    m = mu = coef = basis = None
     for m in range(m_min, m_max + 1):
-        tau = np.logspace(np.log10(1.0 / omega.max()), np.log10(1.0 / omega.min()), m)
-        basis = 1.0 / (1.0 + 1j * omega[:, None] * tau[None, :])
-        A = np.hstack([np.ones((n, 1)), (1j * omega)[:, None], basis])
-        Aw = A * w[:, None]
-        Ar = np.vstack([Aw.real, Aw.imag])
-        b = np.concatenate([(z * w).real, (z * w).imag])
+        tau = np.logspace(log_tau_lo, log_tau_hi, m)
+        basis = 1.0 / (1.0 + 1j * omega_col * tau[None, :])
+        basis_w = basis * w_col
+        Ar = np.empty((2 * n, m + 2))
+        Ar[:n, :2] = aw_fixed.real
+        Ar[n:, :2] = aw_fixed.imag
+        Ar[:n, 2:] = basis_w.real
+        Ar[n:, 2:] = basis_w.imag
         coef, *_ = np.linalg.lstsq(Ar, b, rcond=None)
         rk = coef[2:]
         pos = np.sum(np.abs(rk[rk >= 0]))
         neg = np.sum(np.abs(rk[rk < 0]))
         mu = 1.0 - neg / pos if pos > 0 else 0.0
-        z_fit = A @ coef
-        best = {"M": m, "mu": float(mu), "rms_rel": _relative_rms(z_fit, z), "z_fit": z_fit}
         if mu <= c_threshold:
             break
-    return best
+    if coef is None:
+        return None
+    # The fitted spectrum and residual are only needed for the selected M.
+    z_fit = np.hstack([a_fixed, basis]) @ coef
+    return {
+        "M": m,
+        "mu": float(mu),
+        "rms_rel": _relative_rms(z_fit, z),
+        "z_fit": z_fit,
+    }
 
 
 def fit_quality(data, parameters, kk_ratio_threshold: float = 3.0) -> dict:
