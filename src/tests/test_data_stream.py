@@ -103,6 +103,26 @@ def test_arithmetic_keeps_normalization_flag():
     assert shifted.normalization_area == 2.0
 
 
+@pytest.mark.parametrize("via_constructor", [True, False])
+def test_normalize_twice_raises_and_keeps_data(via_constructor):
+    if via_constructor:
+        eis = EISData(_frame(), area=2.0)
+    else:
+        eis = EISData(_frame())
+        eis.normalize(2.0, "Ohm cm^2")
+    real_before = eis.Real.copy()
+    with pytest.raises(ValueError, match="already normalized"):
+        eis.normalize(2.0, "Ohm cm^2")
+    np.testing.assert_array_equal(eis.Real, real_before)
+    assert eis.normalization_area == 2.0
+
+
+def test_normalized_arithmetic_result_cannot_be_renormalized():
+    shifted = EISData(_frame(), area=2.0) + 1.0
+    with pytest.raises(ValueError, match="already normalized"):
+        shifted.normalize(2.0)
+
+
 # --- slicing keeps the object consistent --------------------------------------
 
 
@@ -179,6 +199,47 @@ def test_duplicate_frequencies_warn_and_keep_order():
     with pytest.warns(UserWarning, match="duplicate"):
         eis = EISData(frame)
     np.testing.assert_array_equal(eis.Freq, frame["freq"].to_numpy())
+
+
+def _duplicate_frame():
+    frame = _frame()
+    frame.loc[1, "freq"] = frame.loc[0, "freq"]
+    return frame
+
+
+def test_duplicate_warning_points_at_caller_for_from_csv(tmp_path):
+    path = tmp_path / "dup.csv"
+    _duplicate_frame().to_csv(path, index=False)
+    with pytest.warns(UserWarning, match="duplicate") as record:
+        EISData.from_csv(str(path))
+    assert [w.filename for w in record] == [__file__]
+
+
+def test_duplicate_warning_points_at_caller_for_init():
+    with pytest.warns(UserWarning, match="duplicate") as record:
+        EISData(_duplicate_frame())
+    assert [w.filename for w in record] == [__file__]
+
+
+def test_arithmetic_does_not_rewarn_on_duplicates():
+    with pytest.warns(UserWarning, match="duplicate"):
+        eis = EISData(_duplicate_frame())
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        eis + 1.0
+        eis * eis
+
+
+def test_arithmetic_may_produce_non_finite_values():
+    frame = _frame()
+    frame.loc[0, ["real", "imag"]] = 0.0
+    zero_point = EISData(frame)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        result = EISData(_frame()) / zero_point
+        by_zero = EISData(_frame()) / 0
+    assert not np.isfinite(result.Real[0])
+    assert np.all(np.isfinite(result.Real[1:]))
+    assert not np.any(np.isfinite(by_zero.Real))
 
 
 def test_clean_input_does_not_warn():
