@@ -18,6 +18,7 @@ from blowing_bubbles.scripts.global_minimize import (  # noqa: F401 (re-export)
     initial_fit,
     make_process_pool,
 )
+from blowing_bubbles.scripts.quality import fit_quality
 
 
 def _segment_boundaries_at_local_minima(y: np.ndarray) -> list[int]:
@@ -65,6 +66,97 @@ def argmax_residual_in_largest_area_segment(
     return start + local_max, seg_i
 
 
+_SELECTION_MODES = (None, "bic", "aic", "kk")
+# History key under which each selection mode records its criterion value.
+_CRITERION_KEYS = {"bic": "bic", "aic": "aic", "kk": "kk_ratio"}
+
+# Floor on the residual variance used by the information criteria, relative to
+# the mean squared weighted impedance. A relative RMS misfit of 1e-8 is far
+# below any measurement noise; below it, cost differences are optimizer
+# round-off and must not count as evidence for an extra branch.
+_RELATIVE_VARIANCE_FLOOR = 1e-16
+
+
+def _validate_selection(selection: str | None, min_improvement: float) -> None:
+    """Raise ``ValueError`` for an unknown ``selection`` or bad ``min_improvement``."""
+    if selection not in _SELECTION_MODES:
+        raise ValueError(
+            f"Unknown selection {selection!r}; use None, 'bic', 'aic' or 'kk'."
+        )
+    if not (0.0 <= min_improvement < 1.0):
+        raise ValueError(
+            f"min_improvement must be in [0, 1), got {min_improvement!r}."
+        )
+
+
+def _residual_weights(data: EISData, weighting: str) -> np.ndarray:
+    """Per-frequency residual weights matching ``impendance_fit``."""
+    z_abs = np.abs(data.Real + 1j * data.Imag)
+    if weighting == "modulus":
+        return 1.0 / np.maximum(z_abs, np.finfo(float).tiny)
+    return np.ones_like(z_abs)
+
+
+def _weighted_rss(res: FitResults, data: EISData, weighting: str) -> float:
+    r"""Weighted residual sum of squares over the :math:`2M` impedance rows.
+
+    Recomputed from the (unweighted) ``res.residuals`` so the margin penalty
+    rows included in ``res.cost`` do not enter the criterion.
+    """
+    w = _residual_weights(data, weighting)
+    return float(np.sum((res.residuals_magnitude * w) ** 2))
+
+
+def information_criterion(
+    res: FitResults, data: EISData, weighting: str = "modulus", kind: str = "bic"
+) -> float:
+    r"""Gaussian least-squares BIC or AIC of a ``complex_fit=True`` fit.
+
+    .. math::
+
+        \mathrm{BIC} = N \ln(\mathrm{RSS}/N) + k \ln N, \qquad
+        \mathrm{AIC} = N \ln(\mathrm{RSS}/N) + 2k
+
+    with :math:`N = 2M` (real and imaginary rows of :math:`M` frequencies),
+    :math:`\mathrm{RSS}` the weighted residual sum of squares (weights
+    :math:`1/|Z_k|` for ``"modulus"``, 1 for ``"unit"``; margin penalty terms
+    excluded) and :math:`k = 3 + 3n` free parameters (:math:`R_s, L, n_L` and
+    :math:`R_i, C_i, e_i` per branch). :math:`\mathrm{RSS}/N` is floored at
+    ``1e-16`` times the mean squared weighted impedance, so fits of noise-free
+    data that differ only by round-off compare by the penalty term alone.
+
+    Parameters
+    ----------
+    res : FitResults
+        Fit result (``n_groups`` branches).
+    data : EISData
+        Spectrum the fit was made on.
+    weighting : {"modulus", "unit"}
+        Weighting used by the fit.
+    kind : {"bic", "aic"}
+        Criterion.
+
+    Returns
+    -------
+    float
+        Criterion value (lower is better).
+    """
+    w = _residual_weights(data, weighting)
+    z = data.Real + 1j * data.Imag
+    n_obs = 2 * len(z)
+    scale = float(np.sum(np.abs(z * w) ** 2)) / n_obs
+    floor = max(_RELATIVE_VARIANCE_FLOOR * scale, np.finfo(float).tiny)
+    variance = max(_weighted_rss(res, data, weighting) / n_obs, floor)
+    k = 3 + 3 * int(res.n_groups)
+    if kind == "bic":
+        penalty = k * np.log(n_obs)
+    elif kind == "aic":
+        penalty = 2.0 * k
+    else:
+        raise ValueError(f"Unknown criterion {kind!r}; use 'bic' or 'aic'.")
+    return float(n_obs * np.log(variance) + penalty)
+
+
 def fit_circuit(
     data: EISData,
     n_restarts: int,
@@ -79,6 +171,8 @@ def fit_circuit(
     weighting: str = "modulus",
     n_jobs: int | None = 1,
     early_stop: int | None = None,
+    selection: str | None = None,
+    min_improvement: float = 0.0,
 ) -> FitResults:
     r"""Fit the R–CPE ladder with iterative fast branch building (IFBB).
 
@@ -91,8 +185,15 @@ def fit_circuit(
     #. While ``n_groups < rc_groups``, insert a new branch at the frequency where
        the residual magnitude is largest on the segment with greatest
        :math:`\int |\hat{Z} - Z|\, d\log_{10} f` and re-fit (up to three attempts).
-       If no attempt lowers the cost, expansion stops and the previous fit is
-       returned.
+       If the new branch is not accepted (see ``selection`` and
+       ``min_improvement``), expansion stops and the previous fit is returned.
+
+    **Model selection.** Adding a branch can never raise the least-squares
+    cost, so with ``selection=None`` the fit keeps adding branches up to
+    ``rc_groups`` even when the extra branch only duplicates an existing one
+    (same :math:`\tau`) and lowers the cost by round-off. The ``selection``
+    criteria weigh the cost decrease against the extra parameters and stop
+    expansion once another branch is not justified by the data.
 
     Parameters
     ----------
@@ -126,12 +227,46 @@ def fit_circuit(
     early_stop : int, optional
         Stop the restarts of each sub-fit once this many reached the best cost.
         ``None`` (default) runs all restarts.
+    selection : {None, "bic", "aic", "kk"}, optional
+        Criterion for accepting another branch.
+
+        - ``None`` (default): unchanged behaviour; a branch is accepted whenever
+          it lowers the cost, up to ``rc_groups`` branches.
+        - ``"bic"``: accept only if the Bayesian information criterion
+          :math:`N \ln(\mathrm{RSS}/N) + k \ln N` decreases, with
+          :math:`N = 2M` weighted residual rows (real and imaginary) and
+          :math:`k = 3 + 3n` free parameters. See
+          :func:`information_criterion`. Recommended for automatic use; it
+          penalises extra branches more strongly than AIC.
+        - ``"aic"``: as ``"bic"`` with the Akaike penalty :math:`2k`.
+        - ``"kk"``: stop before adding a branch once the current fit is no
+          longer ``suspect`` according to
+          :func:`~blowing_bubbles.scripts.quality.fit_quality`, i.e. its
+          relative RMS residual is within ``kk_ratio_threshold`` (default 3)
+          times the Lin-KK noise floor of the spectrum.
+    min_improvement : float
+        Minimum relative cost decrease :math:`(c_{old} - c_{new}) / c_{old}`
+        required to accept a branch, in every ``selection`` mode. The default
+        ``0.0`` accepts any decrease.
 
     Returns
     -------
     FitResults
-        Best fit after branch expansion; ``initialize_rc_groups`` records ``rc_groups``.
+        Best fit after branch expansion; ``initialize_rc_groups`` records
+        ``rc_groups``. ``history`` is a list with one dict per branch count
+        tried, with keys ``n_groups``, ``cost``, ``accepted`` and, if
+        ``selection`` is set, the criterion value under ``"bic"``, ``"aic"`` or
+        ``"kk_ratio"``. A rejected candidate is recorded with
+        ``accepted=False``; in ``"kk"`` mode the fit that stopped expansion is
+        the last entry.
+
+    Raises
+    ------
+    ValueError
+        If ``selection`` is not one of the options above or ``min_improvement``
+        is negative.
     """
+    _validate_selection(selection, min_improvement)
     jobs = _resolve_n_jobs(n_jobs)
     pool = make_process_pool(jobs) if jobs > 1 else None
     try:
@@ -148,6 +283,8 @@ def fit_circuit(
             exponent_bounds=exponent_bounds,
             weighting=weighting,
             fit_kwargs={"executor": pool, "early_stop": early_stop},
+            selection=selection,
+            min_improvement=min_improvement,
         )
     finally:
         if pool is not None:
@@ -168,7 +305,10 @@ def _fit_circuit_impl(
     exponent_bounds: tuple[float, float] | None,
     weighting: str,
     fit_kwargs: dict,
+    selection: str | None = None,
+    min_improvement: float = 0.0,
 ) -> FitResults:
+    _validate_selection(selection, min_improvement)
     if rc_groups > 5:
         warnings.warn("rc_groups is greater than 5.", stacklevel=2)
 
@@ -202,7 +342,36 @@ def _fit_circuit_impl(
     if res is None:
         raise RuntimeError("Initial impedance fit did not converge.")
 
+    def _criterion(fit: FitResults) -> tuple[float | None, bool]:
+        """Criterion value and, for ``"kk"``, whether the fit is adequate."""
+        if selection in ("bic", "aic"):
+            return information_criterion(fit, data, weighting, kind=selection), False
+        if selection == "kk":
+            quality = fit_quality(data, fit.parameters)
+            return quality["kk_ratio"], not quality["suspect"]
+        return None, False
+
+    def _entry(fit: FitResults, value: float | None, accepted: bool) -> dict:
+        entry = {
+            "n_groups": int(fit.n_groups),
+            "cost": float(fit.cost),
+            "accepted": accepted,
+        }
+        if selection is not None:
+            entry[_CRITERION_KEYS[selection]] = value
+        return entry
+
+    crit, adequate = _criterion(res)
+    history = [_entry(res, crit, True)]
+
     for branch_count in range(n_groups, rc_groups):
+        if adequate:
+            if verbose:
+                print(
+                    f"   Fit with {branch_count} branches is within the Lin-KK "
+                    f"noise floor (kk_ratio={crit:.3g}); not adding branches."
+                )
+            break
         if verbose:
             print(f"Fitting with {branch_count + 1} groups")
         magnitude = res.residuals_magnitude
@@ -267,10 +436,21 @@ def _fit_circuit_impl(
 
         if res_new is None:
             raise RuntimeError("Branch expansion fit did not converge.")
-        if res_new.cost >= res.cost:
+        crit_new, adequate_new = _criterion(res_new)
+        # With min_improvement = 0 this is the plain "cost decreased" test.
+        cost_ok = res_new.cost < res.cost * (1.0 - min_improvement)
+        crit_ok = selection not in ("bic", "aic") or crit_new < crit
+        accepted = bool(cost_ok and crit_ok)
+        history.append(_entry(res_new, crit_new, accepted))
+        if not accepted:
             if verbose:
+                reason = (
+                    "did not lower the cost enough"
+                    if not cost_ok
+                    else f"did not lower the {selection.upper()}"
+                )
                 print(
-                    f"   Adding branch {branch_count + 1} did not lower the cost; "
+                    f"   Adding branch {branch_count + 1} {reason}; "
                     f"keeping {branch_count} branches."
                 )
             break
@@ -285,7 +465,9 @@ def _fit_circuit_impl(
             print(f"\033[90m   Cost improvement percentage: {pct}%\033[0m")
 
         res = res_new
+        crit, adequate = crit_new, adequate_new
 
     res.add_initial_rc_groups(rc_groups)
+    res.history = history
 
     return res
