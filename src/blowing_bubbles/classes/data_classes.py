@@ -43,6 +43,9 @@ class EISData:
             area: float | None = None,
             unit: str = "Ohm",
             columns: tuple[str, str, str] | None = None,
+            *,
+            _validate: bool = True,
+            _warn_stacklevel: int = 3,
         ) -> None:
         """
         Initialize EIS data.
@@ -87,7 +90,8 @@ class EISData:
         """
         self.data = data_set
         self.keys = tuple(columns) if columns is not None else self.find_keys()
-        self._check_input()
+        if _validate:
+            self._check_input(stacklevel=_warn_stacklevel)
         self.unit = unit
         self.normalization_area: float | None = None
         self.normalized = False
@@ -142,20 +146,32 @@ class EISData:
         return EISData(
             frame,
             area=area,
-            unit=unit
+            unit=unit,
+            _warn_stacklevel=4,  # attribute the duplicate warning to the caller
         )
 
     def _with_impedance(self, z: np.ndarray) -> EISData:
-        """New :class:`EISData` on this frequency grid with impedance *z*."""
+        """New :class:`EISData` on this frequency grid with impedance *z*.
+
+        Input validation is skipped: the frequencies come from an already
+        validated object, and arithmetic results (e.g. after division by zero)
+        are returned as computed, possibly non-finite.
+        """
         r_key, i_key, f_key = self.keys
         frame = pd.DataFrame({f_key: self.Freq, r_key: z.real, i_key: z.imag})
-        new = EISData(frame, unit=self.unit, columns=(r_key, i_key, f_key))
+        new = EISData(
+            frame, unit=self.unit, columns=(r_key, i_key, f_key), _validate=False
+        )
         new.normalization_area = self.normalization_area
         new.normalized = self.normalized
         return new
 
-    def _check_input(self) -> None:
-        """Validate the frequency and impedance columns of :attr:`data`."""
+    def _check_input(self, stacklevel: int = 3) -> None:
+        """Validate the frequency and impedance columns of :attr:`data`.
+
+        *stacklevel* is passed to :func:`warnings.warn` for the
+        duplicate-frequency warning so that it points at the user's call.
+        """
         r_key, i_key, f_key = self.keys
         for key in (f_key, r_key, i_key):
             values = self.data[key].to_numpy(dtype=float)
@@ -170,7 +186,7 @@ class EISData:
             warnings.warn(
                 f"Column {f_key!r} contains duplicate frequencies.",
                 UserWarning,
-                stacklevel=3,
+                stacklevel=stacklevel,
             )
 
     def _refresh_derived(self) -> None:
@@ -359,6 +375,8 @@ class EISData:
         Multiplies Real and Imag by the area factor to convert from
         absolute impedance (Ω) to area-specific impedance (Ω·cm²).
         Also recalculates Rs, Rtot, and Rp, and sets ``normalized`` to ``True``.
+        Data can only be normalized once; this includes data that was
+        normalized on construction via the ``area`` argument.
 
         Parameters
         ----------
@@ -376,10 +394,22 @@ class EISData:
         Imag : array-like
             Normalized imaginary part
 
+        Raises
+        ------
+        ValueError
+            If *area* is not a positive finite number, or if the data is
+            already normalized (e.g. by passing ``area`` to the constructor).
+
         See Also
         --------
         from_csv : Load with normalization in one step
         """
+        if self.normalized:
+            raise ValueError(
+                "Data is already normalized (area="
+                f"{self.normalization_area!r}); normalizing again would scale "
+                "the impedance twice."
+            )
         if not (np.isfinite(area) and area > 0):
             raise ValueError(f"area must be a positive finite number, got {area!r}.")
         # Copy so the caller's DataFrame is never modified in place.
