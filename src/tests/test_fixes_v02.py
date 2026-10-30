@@ -91,17 +91,31 @@ def test_weighting_option():
     data, _ = _data(freq, **ONE_ARC)
     init = CircuitParameters(**ONE_ARC)
     for w in ("modulus", "unit"):
-        impendance_fit(data, n_groups=1, complex_fit=True, initial_parameters=init, weighting=w)
+        impendance_fit(
+            data, n_groups=1, complex_fit=True, initial_parameters=init, weighting=w
+        )
     with pytest.raises(ValueError):
-        impendance_fit(data, n_groups=1, complex_fit=True, initial_parameters=init, weighting="x")
+        impendance_fit(
+            data,
+            n_groups=1,
+            complex_fit=True,
+            initial_parameters=init,
+            weighting="x",
+        )
 
 
 def test_kk_flag_separates_good_and_bad_fit():
     rng = np.random.default_rng(0)
     freq = np.logspace(5, -2, 100)
     z = circuit_impedance(freq, **ONE_ARC)
-    zn = z * (1 + 0.005 * rng.standard_normal(z.size)) + 1j * 0.005 * np.abs(z) * rng.standard_normal(z.size)
-    data = EISData(pd.DataFrame({"Freq (Hz)": freq, "Zreal (Ohm)": zn.real, "Zimag (Ohm)": zn.imag}))
+    noise_re = 0.005 * rng.standard_normal(z.size)
+    noise_im = 0.005 * np.abs(z) * rng.standard_normal(z.size)
+    zn = z * (1 + noise_re) + 1j * noise_im
+    data = EISData(
+        pd.DataFrame(
+            {"Freq (Hz)": freq, "Zreal (Ohm)": zn.real, "Zimag (Ohm)": zn.imag}
+        )
+    )
     assert lin_kk(freq, zn)["rms_rel"] < 0.02
     good = fit_quality(data, CircuitParameters(**ONE_ARC))
     bad_p = dict(ONE_ARC, resistances=np.array([7.0]))
