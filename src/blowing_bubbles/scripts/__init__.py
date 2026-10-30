@@ -6,6 +6,9 @@ fit_circuit
     Iterative fast branch building (IFBB) for an
     :class:`~blowing_bubbles.classes.data_classes.EISData` spectrum.
     See :mod:`blowing_bubbles.scripts.fit_circuit`.
+fit_quality, lin_kk
+    Label-free fit-quality metrics (Lin-KK residual floor, total-resistance
+    check). See :mod:`blowing_bubbles.scripts.quality`.
 """
 
 __all__: list[str] = []

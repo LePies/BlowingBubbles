@@ -192,6 +192,21 @@ class CircuitParameters:
         self.taus = self.capacitances * self.resistances
         self.sort_by_tau()
 
+    @property
+    def characteristic_times(self) -> np.ndarray:
+        r"""Characteristic time constants :math:`\tau_{c,i} = (R_i C_i)^{1/e_i}` (s).
+
+        ``taus`` stores the product :math:`R_i C_i` (units :math:`\mathrm{s}^{e_i}`),
+        which is what the optimiser orders and parameterises. The apex of
+        branch :math:`i` lies at :math:`\omega_i = 1/\tau_{c,i}`.
+        """
+        return np.power(self.resistances * self.capacitances, 1.0 / self.exponents)
+
+    @property
+    def peak_frequencies(self) -> np.ndarray:
+        r"""Apex frequencies :math:`f_i = 1 / (2\pi\,\tau_{c,i})` (Hz)."""
+        return 1.0 / (2.0 * np.pi * self.characteristic_times)
+
     def sort_by_tau(self):
         """
         Sort resistances, capacitances, and exponents by increasing tau.

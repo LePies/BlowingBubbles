@@ -75,11 +75,13 @@ def initial_fit(
         mountain_center_freqs.append(peak_freq)
 
     resistances = np.array(mountain_widths)
-    taus = 1 / np.asarray(mountain_center_freqs, dtype=float)
+    # Apex of an ideal RC arc: omega_peak * R * C = 1 with omega = 2*pi*f.
+    taus = 1 / (2 * np.pi * np.asarray(mountain_center_freqs, dtype=float))
     if tau_bounds is not None:
         taus = np.clip(taus, tau_bounds[0], tau_bounds[1])
     capacitances = taus / resistances
-    resistances_source = eis.Real[0]
+    # High-frequency intercept, independent of the row order of the data.
+    resistances_source = float(eis.Real[int(np.argmax(eis.Freq))])
     inductance = estimate_inductance_from_imag(eis.Freq, eis.Imag)
     inductance_exponent = 1
 
@@ -198,20 +200,25 @@ def _build_center_linear_constraint(
     z_min: float,
     z_max: float,
 ) -> LinearConstraint:
-    """Hard limits: R_s + R_1/2 >= z_min and R_s + sum(R) - R_N/2 <= z_max."""
+    """Hard limits: R_s <= z_min and R_s + sum(R) - R_N/2 <= z_max.
+
+    The lower limit follows from Re Z(omega) >= R_s for every branch and for the
+    CPE inductor; it stays valid when the high-frequency arc is truncated by the
+    measurement window (version 0.1 used R_s + R_1/2 >= z_min, which excludes
+    the true circuit in that case).
+    """
     A = np.zeros((2, n_params))
-    A[0, 0] = -1.0
-    A[0, head] = -0.5
+    A[0, 0] = 1.0
     A[1, 0] = 1.0
     A[1, head : head + n_groups] = 1.0
     A[1, head + n_groups - 1] -= 0.5
-    return LinearConstraint(A, -np.inf * np.ones(2), np.array([-z_min, z_max]))
+    return LinearConstraint(A, -np.inf * np.ones(2), np.array([z_min, z_max]))
 
 
 def _center_positions(p: np.ndarray, r_slice: slice) -> tuple[float, float]:
     Rs = p[0]
     R = p[r_slice]
-    c_lo = Rs + 0.5 * R[0]
+    c_lo = Rs
     c_hi = Rs + float(np.sum(R)) - 0.5 * R[-1]
     return c_lo, c_hi
 
@@ -224,7 +231,7 @@ def _constraints_satisfied(
     tol: float,
 ) -> bool:
     c_lo, c_hi = _center_positions(p, r_slice)
-    return c_lo >= z_min - tol and c_hi <= z_max + tol
+    return c_lo <= z_min + tol and c_hi <= z_max + tol
 
 
 def _project_feasible(
@@ -248,8 +255,8 @@ def _project_feasible(
         R = p[r_slice].copy()
         Rs = p[0]
 
-        if Rs + 0.5 * R[0] < z_min:
-            p[0] = max(lower[0], z_min - 0.5 * R[0])
+        if Rs > z_min:
+            p[0] = max(lower[0], z_min)
 
         c_hi = p[0] + float(np.sum(p[r_slice])) - 0.5 * p[r_slice][-1]
         if c_hi > z_max:
@@ -259,8 +266,8 @@ def _project_feasible(
                 scale = max(0.01, 1.0 - excess / r_sum)
                 p[r_slice] = np.maximum(p[r_slice] * scale, lower[r_slice])
 
-        if p[0] + 0.5 * p[r_slice][0] < z_min:
-            p[0] = max(lower[0], z_min - 0.5 * p[r_slice][0])
+        if p[0] > z_min:
+            p[0] = max(lower[0], z_min)
 
         p = np.clip(p, lower, upper)
 
@@ -283,17 +290,18 @@ def impendance_fit(
     tau_bounds: tuple[float, float] | None = None,
     penalty_margin_weight: float = 1.0,
     penalty_weight: float | None = None,
-    z_margin_frac: float = 0.05,
+    z_margin_frac: float = 0.0,
     z_margin_abs: float = 0.0,
     max_nfev: int | None = None,
     polish: bool = True,
     polish_maxiter: int = 50,
     constraint_tol: float = 1e-9,
-    inductance_bounds: bool = True,
+    inductance_bounds: bool = False,
     inductance_margin: float = 2.0,
     resistance_source_bounds: tuple[float, float] | None = None,
     resistance_branch_bounds: tuple[float, float] | None = None,
     exponent_bounds: tuple[float, float] | None = None,
+    weighting: str = "modulus",
 ) -> FitResults:
     r"""Bounded TRF least-squares fit of the equivalent circuit to ``data``.
 
@@ -330,7 +338,8 @@ def impendance_fit(
     penalty_margin_weight, penalty_weight : float
         Weight on soft Nyquist margin violations.
     z_margin_frac, z_margin_abs : float
-        Margin on :math:`Z'` when enforcing arc-center constraints.
+        Optional soft margin on the constraints :math:`R_s \le \min Z'` and
+        :math:`R_s + \sum R_i - R_n/2 \le \max Z'` (default 0).
     max_nfev : int, optional
         Maximum function evaluations per restart (default ``500 * n_params``).
     polish : bool
@@ -340,7 +349,7 @@ def impendance_fit(
     constraint_tol : float
         Tolerance for declaring constraints satisfied.
     inductance_bounds : bool
-        If ``True``, set signed box bounds on :math:`L` from a frequency-weighted
+        Default ``False`` (only :math:`L \ge 0`). If ``True``, set signed box bounds on :math:`L` from a frequency-weighted
         slope of :math:`\mathrm{Im}(Z)` vs :math:`\omega` (see
         :func:`estimate_inductance_from_imag`).
     inductance_margin : float
@@ -355,6 +364,10 @@ def impendance_fit(
         ``(e_min, e_max)`` uniform box bounds for all CPE exponents (branch and
         inductance exponent). Only used when ``complex_fit=True``. Overrides
         the default ``(0.2, 1.0)``. If ``None``, the default bounds are used.
+    weighting : {"modulus", "unit"}
+        ``"modulus"`` (default): residuals divided by :math:`|Z_k|`, i.e. the
+        relative error is minimised and every decade of frequency contributes.
+        ``"unit"``: unweighted residuals (behaviour of version 0.1).
 
     Returns
     -------
@@ -369,13 +382,21 @@ def impendance_fit(
     X = data.Freq
     Y = data.Real + 1j * data.Imag
 
+    if weighting == "modulus":
+        W = 1.0 / np.maximum(np.abs(Y), np.finfo(float).tiny)
+    elif weighting == "unit":
+        W = np.ones(Y.shape, dtype=float)
+    else:
+        raise ValueError(f"Unknown weighting {weighting!r}; use 'modulus' or 'unit'.")
+    W_rows = np.concatenate([W, W]) if complex_fit else W
+
     z_min = float(np.min(data.Real))
     z_max = float(np.max(data.Real))
     z_span = max(z_max - z_min, np.finfo(float).eps)
     margin = max(z_margin_abs, z_margin_frac * z_span)
 
     pw = penalty_weight if penalty_weight is not None else penalty_margin_weight
-    margin_weight = pw * float(np.median(np.abs(Y)))
+    margin_weight = pw * float(np.median(np.abs(Y) * W))
 
     head = 3 if complex_fit else 2
     r_slice = slice(head, head + n_groups)
@@ -517,7 +538,7 @@ def impendance_fit(
 
     def _margin_residuals(p: np.ndarray) -> np.ndarray:
         c_lo, c_hi = _center_positions(p, r_slice)
-        pen_margin_lo = max(0.0, margin - (c_lo - z_min))
+        pen_margin_lo = max(0.0, margin + (c_lo - z_min))
         pen_margin_hi = max(0.0, margin - (z_max - c_hi))
         return np.array(
             [margin_weight * pen_margin_lo, margin_weight * pen_margin_hi],
@@ -567,12 +588,11 @@ def impendance_fit(
     def _margin_jacobian_rows(p: np.ndarray) -> np.ndarray:
         rows = np.zeros((2, n_params))
         c_lo, c_hi = _center_positions(p, r_slice)
-        pen_margin_lo = margin - (c_lo - z_min)
+        pen_margin_lo = margin + (c_lo - z_min)
         pen_margin_hi = margin - (z_max - c_hi)
 
         if pen_margin_lo > 0:
-            rows[0, 0] = -margin_weight
-            rows[0, head] = -0.5 * margin_weight
+            rows[0, 0] = margin_weight
 
         if pen_margin_hi > 0:
             rows[1, 0] = margin_weight
@@ -585,8 +605,10 @@ def impendance_fit(
     _eval_cache: dict = {"p": None, "r": None, "J": None}
 
     def _evaluate(p: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        r = np.concatenate([_impedance_residuals(p), _margin_residuals(p)])
-        J = np.vstack([_impedance_jacobian(p), _margin_jacobian_rows(p)])
+        r = np.concatenate([W_rows * _impedance_residuals(p), _margin_residuals(p)])
+        J = np.vstack(
+            [W_rows[:, None] * _impedance_jacobian(p), _margin_jacobian_rows(p)]
+        )
         return r, J
 
     def _total_cost(p: np.ndarray) -> float:
@@ -670,14 +692,26 @@ def impendance_fit(
 
         return p, cost
 
-    def _perturb(base: np.ndarray) -> np.ndarray:
+    def _perturb(base: np.ndarray, local_exponents: bool) -> np.ndarray:
         init = base * np.exp(rng.normal(scale=sigma, size=n_params))
         init = np.maximum(init, 1e-9)
         if complex_fit:
-            init[2] = rng.uniform(_CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX)
-            init[e_slice] = rng.uniform(
-                _CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX, size=n_groups
-            )
+            if local_exponents:
+                # Stay near the base exponents (refinement around a seed).
+                init[2] = base[2] + rng.normal(scale=0.5 * sigma)
+                init[e_slice] = base[e_slice] + rng.normal(
+                    scale=0.5 * sigma, size=n_groups
+                )
+                init[2] = np.clip(init[2], _CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX)
+                init[e_slice] = np.clip(
+                    init[e_slice], _CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX
+                )
+            else:
+                # Global exploration of the exponents.
+                init[2] = rng.uniform(_CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX)
+                init[e_slice] = rng.uniform(
+                    _CPE_EXPONENT_MIN, _CPE_EXPONENT_MAX, size=n_groups
+                )
         return _project_feasible(
             np.clip(init, lower, upper),
             z_min,
@@ -709,7 +743,8 @@ def impendance_fit(
     )
 
     for i in range(max(1, n_restarts)):
-        init = base_init if i == 0 else _perturb(base_init)
+        # Half of the restarts keep the exponents local, half explore globally.
+        init = base_init if i == 0 else _perturb(base_init, local_exponents=(i % 2 == 1))
         try:
             res_ls = least_squares(
                 _residuals,
@@ -718,6 +753,7 @@ def impendance_fit(
                 method="trf",
                 bounds=(lower, upper),
                 max_nfev=max_nfev,
+                x_scale="jac",
             )
         except Exception:
             continue
