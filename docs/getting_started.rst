@@ -29,6 +29,22 @@ Examples (Sphinx-Gallery)
 Scripts in :file:`examples/` are executed when you build the docs. The gallery
 appears under :doc:`auto_examples/index`.
 
+Interactive UI
+--------------
+
+An optional Streamlit UI provides three tabs: **Single** (load one spectrum,
+run ``fit``, inspect the Nyquist overlay and parameters, refine with
+``quick_fit``), **Batch** (fit every CSV in a folder into an output folder
+with a report CSV and summary figure), and **Live Tune** (adjust
+R / C / tau / exponent / L with sliders and watch the Nyquist update in
+real time).
+
+.. code-block:: bash
+
+   uv sync --group ui
+   streamlit run src/blowing_bubbles/ui/app.py
+   # or: python -m blowing_bubbles.ui
+
 .. code-block:: bash
 
    uv run python examples/plot_circuit_demo.py
