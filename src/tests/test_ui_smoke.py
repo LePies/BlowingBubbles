@@ -17,4 +17,4 @@ def test_app_renders_three_tabs():
     at.run()
     assert not at.exception
     tab_labels = [t.label for t in at.tabs]
-    assert tab_labels == ["Single", "Batch", "Live Tune"]
+    assert tab_labels == ["Single", "Batch", "Live Tune", "Analysis"]
