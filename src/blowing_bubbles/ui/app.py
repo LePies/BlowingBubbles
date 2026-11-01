@@ -52,7 +52,7 @@ def _fit_controls(key_prefix: str) -> dict:
             )
         with col3:
             rs_b = st.text_input("Rs bounds (min,max)", "", key=f"{key_prefix}_rsb")
-            r_b = st.text_input("Branch R bounds", "1.0,100.0", key=f"{key_prefix}_rb")
+            r_b = st.text_input("Branch R bounds", "0.0,100.0", key=f"{key_prefix}_rb")
             e_b = st.text_input("Exponent bounds", "0.85,1.0", key=f"{key_prefix}_eb")
     return {
         "n_restarts": int(n_restarts),
