@@ -353,15 +353,62 @@ def live_tab() -> None:
         st.pyplot(plots.nyquist_figure(data, fits))
 
 
+def analysis_tab() -> None:
+    st.header("Analysis of fitted results")
+    from blowing_bubbles.ui import analysis as analysis_mod
+    from blowing_bubbles.ui import analysis_plots
+
+    out = st.session_state.get("batch_out") or st.text_input(
+        "Batch output folder", key="analysis_out"
+    )
+    in_dir = st.session_state.get("batch_in") or st.text_input(
+        "Batch input folder", key="analysis_in"
+    )
+    if not out or not Path(out).exists():
+        st.info("Run a batch first, or point at an existing output folder.")
+        return
+    report_path = Path(out) / "batch_report.csv"
+    if not report_path.exists():
+        st.error(f"No batch_report.csv in {out}.")
+        return
+    report = batch_mod.load_report(out)
+    table = analysis_mod.analysis_table(out, report)
+    st.subheader("Resistance breakdown per file")
+    st.dataframe(table)
+    st.pyplot(analysis_plots.resistance_overview_figure(table))
+
+    ok = report[report.get("success", False).astype(bool)]["file"].tolist()
+    if ok and in_dir:
+        st.subheader("Difference spectra (ΔZ vs reference)")
+        reference = st.selectbox("Reference file", ok, key="analysis_ref")
+        picks = st.multiselect(
+            "Files to compare", ok, default=ok[:3], key="analysis_pick"
+        )
+        mode = st.radio(
+            "Plot", ["-Im(ΔZ)", "|ΔZ|"], horizontal=True, key="analysis_mode"
+        )
+        if reference and picks:
+            diff = analysis_mod.difference_spectra(in_dir, out, picks, reference)
+            st.pyplot(
+                analysis_plots.difference_figure(
+                    diff, reference, mode="imag" if mode == "-Im(ΔZ)" else "mag"
+                )
+            )
+
+
 def main() -> None:
     st.title("BlowingBubbles — EIS circuit fitting")
-    tab_single, tab_batch, tab_live = st.tabs(["Single", "Batch", "Live Tune"])
+    tab_single, tab_batch, tab_live, tab_analysis = st.tabs(
+        ["Single", "Batch", "Live Tune", "Analysis"]
+    )
     with tab_single:
         single_tab()
     with tab_batch:
         batch_tab()
     with tab_live:
         live_tab()
+    with tab_analysis:
+        analysis_tab()
 
 
 main()

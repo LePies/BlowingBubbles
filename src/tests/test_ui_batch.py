@@ -98,6 +98,27 @@ def test_live_residual_rms_finite(demo_data):
     assert np.isfinite(rms) and rms >= 0.0
 
 
+def test_analysis_table_and_difference(spectra_folder, tmp_path):
+    from blowing_bubbles.ui import analysis as analysis_mod
+
+    out_dir = tmp_path / "out"
+    batch_mod.run_batch(
+        spectra_folder, out_dir, fit_kwargs={"n_restarts": 3, "rc_groups": 1, "seed": 0}
+    )
+    table = analysis_mod.analysis_table(out_dir)
+    assert len(table) == 2
+    for col in ("Rs", "Rp", "Rtot", "R1_slowest", "R_rest"):
+        assert col in table.columns
+    assert np.allclose(table["Rtot"], table["Rs"] + table["Rp"])
+
+    names = ["cell_00.csv", "cell_01.csv"]
+    diff = analysis_mod.difference_spectra(spectra_folder, out_dir, names, names[0])
+    assert set(diff) == set(names)
+    freq, dz_ref = diff[names[0]]
+    assert np.allclose(dz_ref, 0.0)
+    assert len(freq) == len(diff[names[1]][0])
+
+
 def test_nyquist_figure_runs(demo_data):
     import matplotlib.pyplot as plt
 
