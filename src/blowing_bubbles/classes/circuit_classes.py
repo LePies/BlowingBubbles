@@ -154,6 +154,11 @@ def _plot_full_fit(
     return axis
 
 
+def _tau_sort_index(resistances: np.ndarray, capacitances: np.ndarray) -> np.ndarray:
+    r"""Branch order used by :meth:`CircuitParameters.sort_by_tau` (by :math:`R C`)."""
+    return np.argsort(np.asarray(capacitances) * np.asarray(resistances))
+
+
 class CircuitParameters:
     r"""Container for the parametric R–CPE ladder used in BlowingBubbles EIS fitting.
 
@@ -217,8 +222,7 @@ class CircuitParameters:
         """
         Sort resistances, capacitances, and exponents by increasing tau.
         """
-        tau = self.capacitances * self.resistances
-        sort_idx = np.argsort(tau)
+        sort_idx = _tau_sort_index(self.resistances, self.capacitances)
         self.resistances = self.resistances[sort_idx]
         self.capacitances = self.capacitances[sort_idx]
         self.exponents = self.exponents[sort_idx]
@@ -518,13 +522,31 @@ class FitResults(OptimizeResult):
     - ``residuals`` — complex residuals :math:`\hat{Z}_k - Z_k` per frequency
     - ``residuals_magnitude`` — :math:`|\hat{Z}_k - Z_k|`
     - ``n_groups`` — number of parallel branches in the fit
+    - ``covariance`` — ``(3 + 3n, 3 + 3n)`` covariance matrix of the reported
+      parameters in :meth:`CircuitParameters.to_array` order
+      ``[R_s, L, n_L, R_1..R_n, C_1..C_n, e_1..e_n]`` (branches in the
+      tau-sorted order of ``parameters``); ``None`` if not computed
+    - ``standard_errors`` — ``sqrt(diag(covariance))``, same order (see
+      :meth:`parameter_uncertainties` for a dict keyed like
+      :meth:`CircuitParameters.as_dict` and :attr:`parameter_names` for labels)
+    - ``correlation`` — correlation matrix, same order; rows/columns of
+      parameters with zero variance (fixed parameters) are 0
 
-    The internal optimizer vector layout depends on ``complex_fit``:
+    The uncertainties are a local linearization of the weighted least-squares
+    problem at the solution; see
+    :func:`~blowing_bubbles.scripts.global_minimize.impedance_fit`.
+
+    ``res_ls.x`` as passed in (after the optimizer's :math:`\Delta\tau` were
+    converted back) holds capacitances; its layout depends on ``complex_fit``:
 
     - ``complex_fit=False``:
-      ``[R_s, L, R_1..R_n, \Delta\tau_1..\Delta\tau_n]``
+      ``[R_s, L, R_1..R_n, C_1..C_n]``
     - ``complex_fit=True``:
-      ``[R_s, L, n_L, R_1..R_n, \Delta\tau_1..\Delta\tau_n, e_1..e_n]``
+      ``[R_s, L, n_L, R_1..R_n, C_1..C_n, e_1..e_n]``
+
+    Branches in ``res_ls.x`` (and in a ``covariance`` passed in) are in
+    optimizer order; ``parameters`` and the stored uncertainties are sorted by
+    tau.
     """
 
     def __init__(
@@ -534,23 +556,48 @@ class FitResults(OptimizeResult):
         complex_fit: bool,
         tau_bounds: tuple[float, float] | None = None,
         initialize_rc_groups: int | None = None,
+        covariance: np.ndarray | None = None,
     ):
-        r"""Populate from a converged :class:`scipy.optimize.OptimizeResult`."""
-        # Parameter layout (must match impendance_fit least-squares vector):
+        r"""Populate from a converged :class:`scipy.optimize.OptimizeResult`.
+
+        ``covariance`` (optional) is in :meth:`CircuitParameters.to_array`
+        layout with branches in the same order as ``res_ls.x``; it is permuted
+        to the tau-sorted branch order of :attr:`parameters`.
+        """
+        # Parameter layout (must match impedance_fit least-squares vector):
         #   complex_fit=False:  [Rs, L,        R_1..R_n, C_1..C_n]
         #   complex_fit=True:   [Rs, L, n_L,   R_1..R_n, C_1..C_n, e_1..e_n]
         head = 3 if complex_fit else 2
+        resistances = res_ls.x[head : head + n_groups]
+        capacitances = res_ls.x[head + n_groups : head + 2*n_groups]
         self.parameters = CircuitParameters(
             resistance_source=res_ls.x[0],
             inductance=res_ls.x[1],
             inductance_exponent=res_ls.x[2] if complex_fit else 1.0,
-            resistances=res_ls.x[head : head + n_groups],
-            capacitances=res_ls.x[head + n_groups : head + 2*n_groups],
+            resistances=resistances,
+            capacitances=capacitances,
             exponents=(
                 res_ls.x[head + 2*n_groups : head + 3*n_groups]
                 if complex_fit else np.ones(n_groups)
             ),
         )
+        self.covariance = None
+        self.standard_errors = None
+        self.correlation = None
+        if covariance is not None:
+            # Apply the same branch permutation as CircuitParameters.sort_by_tau.
+            idx = _tau_sort_index(np.array(resistances), np.array(capacitances))
+            perm = np.concatenate(
+                [[0, 1, 2], 3 + idx, 3 + n_groups + idx, 3 + 2 * n_groups + idx]
+            )
+            cov = np.asarray(covariance, dtype=float)[np.ix_(perm, perm)]
+            std = np.sqrt(np.clip(np.diag(cov), 0.0, None))
+            denom = np.outer(std, std)
+            corr = np.zeros_like(cov)
+            np.divide(cov, denom, out=corr, where=denom > 0)
+            self.covariance = cov
+            self.standard_errors = std
+            self.correlation = corr
         res_real = res_ls.fun[:res_ls.fun.size//2]
         res_imag = res_ls.fun[res_ls.fun.size//2:]
         self.residuals = res_real + 1j * res_imag
@@ -568,7 +615,37 @@ class FitResults(OptimizeResult):
         self.n_groups = n_groups
         self.tau_bounds = tau_bounds
         self.initialize_rc_groups = initialize_rc_groups
-    
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """Labels for :attr:`covariance` / :attr:`standard_errors` entries."""
+        n = self.n_groups
+        return (
+            ["R_s", "L", "n_L"]
+            + [f"R_{i + 1}" for i in range(n)]
+            + [f"C_{i + 1}" for i in range(n)]
+            + [f"e_{i + 1}" for i in range(n)]
+        )
+
+    def parameter_uncertainties(self) -> dict | None:
+        """Standard errors keyed like :meth:`CircuitParameters.as_dict`.
+
+        Returns ``None`` if no covariance was computed. Branch arrays follow
+        the tau-sorted order of :attr:`parameters`.
+        """
+        if self.standard_errors is None:
+            return None
+        n = self.n_groups
+        se = self.standard_errors
+        return {
+            "resistance_source": float(se[0]),
+            "inductance": float(se[1]),
+            "inductance_exponent": float(se[2]),
+            "resistances": se[3 : 3 + n].copy(),
+            "capacitances": se[3 + n : 3 + 2 * n].copy(),
+            "exponents": se[3 + 2 * n : 3 + 3 * n].copy(),
+        }
+
 
     def add_initial_rc_groups(self, rc_groups: int) -> None:
         """
