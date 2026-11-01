@@ -7,6 +7,7 @@ the R–CPE ladder using iterative fast branch building.
 from __future__ import annotations
 
 import re
+import warnings
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
@@ -42,6 +43,9 @@ class EISData:
             area: float | None = None,
             unit: str = "Ohm",
             columns: tuple[str, str, str] | None = None,
+            *,
+            _validate: bool = True,
+            _warn_stacklevel: int = 3,
         ) -> None:
         """
         Initialize EIS data.
@@ -51,8 +55,15 @@ class EISData:
         data_set : pd.DataFrame
             DataFrame containing EIS data with frequency, real, and
             imaginary impedance columns
-        area : float
-            Electrode area for normalization (default: 1.0)
+        area : float, optional
+            Electrode area. If given, the impedance is normalized with
+            :meth:`normalize` (multiplied by *area*, giving area-specific
+            impedance). ``None`` (default) leaves the data unnormalized.
+        unit : str
+            Impedance unit used for plot labels (default ``"Ohm"``). When *area*
+            is given and *unit* is the default ``"Ohm"``, the unit becomes
+            ``"Ohm cm^2"``; any other *unit* is taken to already describe the
+            normalized data and is kept as is.
         columns : tuple of str, optional
             Explicit ``(real, imag, freq)`` column names. If ``None`` they are
             detected with :meth:`find_keys`.
@@ -61,20 +72,32 @@ class EISData:
         -------
         None
 
+        Raises
+        ------
+        ValueError
+            If frequency, real or imaginary values contain NaN/inf, or if any
+            frequency is not strictly positive.
+
+        Warns
+        -----
+        UserWarning
+            If the spectrum contains duplicate frequencies. Rows are kept in
+            their original order.
+
         See Also
         --------
         from_csv : Alternative constructor to load from file
         """
         self.data = data_set
         self.keys = tuple(columns) if columns is not None else self.find_keys()
-        self.Real = data_set[self.keys[0]].to_numpy()
-        self.Imag = data_set[self.keys[1]].to_numpy()
-        self.Freq = data_set[self.keys[2]].to_numpy()
-        self.Rs = self.find_Rs()[0]
-        self.Rtot = self.find_Rtot()[0]
-        self.Rp = self.find_Rp()[0]
-        self.normalization_area = area
+        if _validate:
+            self._check_input(stacklevel=_warn_stacklevel)
         self.unit = unit
+        self.normalization_area: float | None = None
+        self.normalized = False
+        self._refresh_derived()
+        if area is not None:
+            self.normalize(area, unit if unit != "Ohm" else f"{unit} cm^2")
 
     @classmethod
     def from_csv(
@@ -96,10 +119,14 @@ class EISData:
         ----------
         path_to_data : str
             Path to the CSV file
-        area : float
-            Area normalization factor (e.g., cm²)
+        area : float, optional
+            Electrode area (e.g. in cm²). If given, the impedance is multiplied
+            by *area* on load (see :meth:`normalize`); ``None`` (default) leaves
+            it unnormalized.
         unit : str
-            Unit for the data (e.g., "Ohm")
+            Unit for the data (default ``"Ohm"``). With *area* and the default
+            unit, the normalized unit is ``"Ohm cm^2"``; a non-default *unit* is
+            kept as is.
 
         Returns
         -------
@@ -119,16 +146,66 @@ class EISData:
         return EISData(
             frame,
             area=area,
-            unit=unit
+            unit=unit,
+            _warn_stacklevel=4,  # attribute the duplicate warning to the caller
         )
 
     def _with_impedance(self, z: np.ndarray) -> EISData:
-        """New :class:`EISData` on this frequency grid with impedance *z*."""
+        """New :class:`EISData` on this frequency grid with impedance *z*.
+
+        Input validation is skipped: the frequencies come from an already
+        validated object, and arithmetic results (e.g. after division by zero)
+        are returned as computed, possibly non-finite.
+        """
         r_key, i_key, f_key = self.keys
         frame = pd.DataFrame({f_key: self.Freq, r_key: z.real, i_key: z.imag})
-        new = EISData(frame, unit=self.unit, columns=(r_key, i_key, f_key))
+        new = EISData(
+            frame, unit=self.unit, columns=(r_key, i_key, f_key), _validate=False
+        )
         new.normalization_area = self.normalization_area
+        new.normalized = self.normalized
         return new
+
+    def _check_input(self, stacklevel: int = 3) -> None:
+        """Validate the frequency and impedance columns of :attr:`data`.
+
+        *stacklevel* is passed to :func:`warnings.warn` for the
+        duplicate-frequency warning so that it points at the user's call.
+        """
+        r_key, i_key, f_key = self.keys
+        for key in (f_key, r_key, i_key):
+            values = self.data[key].to_numpy(dtype=float)
+            if not np.all(np.isfinite(values)):
+                raise ValueError(f"Column {key!r} contains NaN or infinite values.")
+        freq = self.data[f_key].to_numpy(dtype=float)
+        if np.any(freq <= 0):
+            raise ValueError(
+                f"Column {f_key!r} must contain strictly positive frequencies."
+            )
+        if np.unique(freq).size != freq.size:
+            warnings.warn(
+                f"Column {f_key!r} contains duplicate frequencies.",
+                UserWarning,
+                stacklevel=stacklevel,
+            )
+
+    def _refresh_derived(self) -> None:
+        """Re-sync Real/Imag/Freq and Rs/Rtot/Rp from :attr:`data`."""
+        r_key, i_key, f_key = self.keys
+        self.Real = self.data[r_key].to_numpy(dtype=float)
+        self.Imag = self.data[i_key].to_numpy(dtype=float)
+        self.Freq = self.data[f_key].to_numpy(dtype=float)
+        self.Rs = self.find_Rs()[0]
+        self.Rtot = self.find_Rtot()[0]
+        self.Rp = self.find_Rp()[0]
+
+    def _keep_rows(self, rows: slice | np.ndarray) -> None:
+        """Keep only the positional *rows* of :attr:`data` and refresh."""
+        subset = self.data.iloc[rows]
+        if len(subset) == 0:
+            raise ValueError("Selection would remove all data points.")
+        self.data = subset.copy()
+        self._refresh_derived()
 
     def _impedance_of(self, other: EISData | complex | float) -> np.ndarray | complex:
         if isinstance(other, EISData):
@@ -224,11 +301,18 @@ class EISData:
         Returns
         -------
         None
+
+        Raises
+        ------
+        ValueError
+            If the range selects no data points.
+
+        Notes
+        -----
+        ``data``, ``Real``/``Imag``/``Freq`` and ``Rs``/``Rtot``/``Rp`` are all
+        updated.
         """
-        self.Real = self.Real[start:end]
-        self.Imag = self.Imag[start:end]
-        self.Freq = self.Freq[start:end]
-        self.data = self.data.iloc[start:end]
+        self._keep_rows(slice(start, end))
 
     def find_Rs(self) -> tuple[float, int]:
         """
@@ -254,15 +338,6 @@ class EISData:
             return float(rs), int(i0)
         i0 = int(order[0])
         return float(self.Real[i0]), i0
-
-    def simpleRs(self) -> None:
-        """
-        Simple Rs calculation (placeholder).
-
-        Returns
-        None
-        """
-        pass
 
     def find_Rtot(self) -> tuple[float, int]:
         """
@@ -299,7 +374,9 @@ class EISData:
 
         Multiplies Real and Imag by the area factor to convert from
         absolute impedance (Ω) to area-specific impedance (Ω·cm²).
-        Also recalculates Rs, Rtot, and Rp.
+        Also recalculates Rs, Rtot, and Rp, and sets ``normalized`` to ``True``.
+        Data can only be normalized once; this includes data that was
+        normalized on construction via the ``area`` argument.
 
         Parameters
         ----------
@@ -317,21 +394,33 @@ class EISData:
         Imag : array-like
             Normalized imaginary part
 
+        Raises
+        ------
+        ValueError
+            If *area* is not a positive finite number, or if the data is
+            already normalized (e.g. by passing ``area`` to the constructor).
+
         See Also
         --------
         from_csv : Load with normalization in one step
         """
-        self.Real = self.Real * area
-        self.Imag = self.Imag * area
+        if self.normalized:
+            raise ValueError(
+                "Data is already normalized (area="
+                f"{self.normalization_area!r}); normalizing again would scale "
+                "the impedance twice."
+            )
+        if not (np.isfinite(area) and area > 0):
+            raise ValueError(f"area must be a positive finite number, got {area!r}.")
+        # Copy so the caller's DataFrame is never modified in place.
+        self.data = self.data.copy()
         self.data[self.keys[0]] = self.data[self.keys[0]] * area
         self.data[self.keys[1]] = self.data[self.keys[1]] * area
         self.unit = norm_unit
         self.normalization_area = area
-        self.Rs = self.find_Rs()[0]
-        self.Rtot = self.find_Rtot()[0]
-        self.Rp = self.find_Rp()[0]
+        self._refresh_derived()
 
-        self.normalized = "YES"
+        self.normalized = True
         return self.Freq, self.Real, self.Imag
 
     def plot_nyquist(
@@ -450,13 +539,13 @@ class EISData:
         Returns
         -------
         None
+
+        Raises
+        ------
+        ValueError
+            If no frequency lies below *frequency*.
         """
-        print(f"Cutting frequencies above {frequency} Hz")
-        cut_index = np.where(self.Freq < frequency)[0]
-        self.Real = self.Real[cut_index]
-        self.Imag = self.Imag[cut_index]
-        self.Freq = self.Freq[cut_index]
-        self.data = self.data.iloc[cut_index]
+        self._keep_rows(np.flatnonzero(self.Freq < frequency))
 
     def cut_frequencies_below(self, frequency: float) -> None:
         """
@@ -470,12 +559,13 @@ class EISData:
         Returns
         -------
         None
+
+        Raises
+        ------
+        ValueError
+            If no frequency lies above *frequency*.
         """
-        cut_index = np.where(self.Freq > frequency)[0]
-        self.Real = self.Real[cut_index]
-        self.Imag = self.Imag[cut_index]
-        self.Freq = self.Freq[cut_index]
-        self.data = self.data.iloc[cut_index]
+        self._keep_rows(np.flatnonzero(self.Freq > frequency))
 
     def quick_fit(
         self,
@@ -486,23 +576,33 @@ class EISData:
         tau_bounds: tuple[float, float] | None = None,
         penalty_margin_weight: float = 1.0,
         penalty_weight: float | None = None,
-        z_margin_frac: float = 0.05,
+        z_margin_frac: float = 0.0,
         z_margin_abs: float = 0.0,
         max_nfev: int | None = None,
         polish: bool = True,
         polish_maxiter: int = 50,
         constraint_tol: float = 1e-9,
-        inductance_bounds: bool = True,
+        inductance_bounds: bool = False,
         inductance_margin: float = 2.0,
         resistance_source_bounds: tuple[float, float] | None = None,
         resistance_branch_bounds: tuple[float, float] | None = None,
-        exponent_bounds: tuple[float, float] | None = None
+        exponent_bounds: tuple[float, float] | None = None,
+        weighting: str = "modulus",
     ) -> FitResults:
         r"""Quick fit of the parametric R–CPE ladder to this spectrum.
 
         Calls :func:`~blowing_bubbles.classes.data_classes.quick_fit`
-        (global optimization).
-    
+        (global optimization) with a single restart from *initial_parameters*.
+        The remaining arguments are passed through to
+        :func:`~blowing_bubbles.scripts.global_minimize.impendance_fit`.
+
+        Notes
+        -----
+        The defaults now match ``impendance_fit``: ``z_margin_frac=0.0`` and
+        ``inductance_bounds=False`` (previously ``0.05`` and ``True``, which
+        could exclude the true circuit). Pass the old values explicitly to
+        restore the previous behaviour. *weighting* (default ``"modulus"``,
+        i.e. relative error) is new.
         """
 
         return quick_fit(
@@ -526,7 +626,8 @@ class EISData:
             inductance_margin = inductance_margin,
             resistance_source_bounds = resistance_source_bounds,
             resistance_branch_bounds = resistance_branch_bounds,
-            exponent_bounds = exponent_bounds
+            exponent_bounds = exponent_bounds,
+            weighting = weighting,
         )
 
 
@@ -577,19 +678,33 @@ def quick_fit(
     tau_bounds: tuple[float, float] | None = None,
     penalty_margin_weight: float = 1.0,
     penalty_weight: float | None = None,
-    z_margin_frac: float = 0.05,
+    z_margin_frac: float = 0.0,
     z_margin_abs: float = 0.0,
     max_nfev: int | None = None,
     polish: bool = True,
     polish_maxiter: int = 50,
     constraint_tol: float = 1e-9,
-    inductance_bounds: bool = True,
+    inductance_bounds: bool = False,
     inductance_margin: float = 2.0,
     resistance_source_bounds: tuple[float, float] | None = None,
     resistance_branch_bounds: tuple[float, float] | None = None,
     exponent_bounds: tuple[float, float] | None = None,
+    weighting: str = "modulus",
 ) -> FitResults:
-    """Quick fit of an R–CPE ladder to *data* using default parameters."""
+    """Quick fit of an R–CPE ladder to *data* using default parameters.
+
+    Thin wrapper around
+    :func:`~blowing_bubbles.scripts.global_minimize.impendance_fit`; all
+    arguments are passed through.
+
+    Notes
+    -----
+    The defaults now match ``impendance_fit``: ``z_margin_frac=0.0`` and
+    ``inductance_bounds=False`` (previously ``0.05`` and ``True``, which could
+    exclude the true circuit). Pass the old values explicitly to restore the
+    previous behaviour. *weighting* (default ``"modulus"``, i.e. relative
+    error) is new.
+    """
     from blowing_bubbles.scripts.global_minimize import impendance_fit as _run_quick_fit
 
     return _run_quick_fit(
@@ -613,5 +728,6 @@ def quick_fit(
         inductance_margin = inductance_margin,
         resistance_source_bounds = resistance_source_bounds,
         resistance_branch_bounds = resistance_branch_bounds,
-        exponent_bounds = exponent_bounds
+        exponent_bounds = exponent_bounds,
+        weighting = weighting,
     )
