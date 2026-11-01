@@ -13,4 +13,4 @@ The submodules :mod:`.plots`, :mod:`.batch` and :mod:`.live` are
 Streamlit-independent helpers and can be used without the UI installed.
 """
 
-__all__ = ["batch", "live", "plots"]
+__all__ = ["analysis", "analysis_plots", "batch", "live", "plots"]
