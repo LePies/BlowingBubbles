@@ -23,8 +23,9 @@ def _fit_one(
     path: Path,
     fit_kwargs: dict,
     quick_fit_kwargs: dict | None,
+    area: float | None = None,
 ) -> tuple[FitResults, float]:
-    data = EISData.from_csv(str(path))
+    data = EISData.from_csv(str(path), area=area)
     start = time.time()
     result = data.fit(**fit_kwargs)
     if quick_fit_kwargs is not None:
@@ -40,6 +41,7 @@ def run_batch(
     fit_kwargs: dict | None = None,
     quick_fit_kwargs: dict | None = None,
     pattern: str = "*.csv",
+    area: float | None = None,
     progress=None,
 ) -> pd.DataFrame:
     """Fit every CSV in ``input_dir`` and write results to ``output_dir``.
@@ -55,6 +57,9 @@ def run_batch(
         using the coarse parameters as the initial guess.
     pattern : str
         Glob pattern for spectrum files (default ``"*.csv"``).
+    area : float, optional
+        Electrode area in cm^2. If given, every spectrum is normalized to
+        area-specific impedance (Ohm cm^2) on load, before fitting.
     progress : callable, optional
         Called as ``progress(i, n, filename)`` after each file.
 
@@ -85,8 +90,8 @@ def run_batch(
             progress(i, len(files), path.name)
         row = {"file": path.name}
         try:
-            result, elapsed = _fit_one(path, fit_kwargs, quick_fit_kwargs)
-            data = EISData.from_csv(str(path))
+            result, elapsed = _fit_one(path, fit_kwargs, quick_fit_kwargs, area)
+            data = EISData.from_csv(str(path), area=area)
             stem = path.stem
             result.parameters.save(fits_dir / f"{stem}_parameters.json")
             z_fit = result.parameters.get_impedance(data.Freq)

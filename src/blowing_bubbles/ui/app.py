@@ -52,7 +52,7 @@ def _fit_controls(key_prefix: str) -> dict:
             )
         with col3:
             rs_b = st.text_input("Rs bounds (min,max)", "", key=f"{key_prefix}_rsb")
-            r_b = st.text_input("Branch R bounds", "1.0,100.0", key=f"{key_prefix}_rb")
+            r_b = st.text_input("Branch R bounds", "0.0,100.0", key=f"{key_prefix}_rb")
             e_b = st.text_input("Exponent bounds", "0.85,1.0", key=f"{key_prefix}_eb")
     return {
         "n_restarts": int(n_restarts),
@@ -211,6 +211,14 @@ def batch_tab() -> None:
     st.header("Batch: fit a folder")
     in_dir = st.text_input("Input folder (CSV spectra)", key="batch_in")
     out_dir = st.text_input("Output folder", key="batch_out")
+    area_text = st.text_input(
+        "Normalize by electrode area (cm^2, empty = none)", "", key="batch_area"
+    )
+    try:
+        area = float(area_text) if area_text.strip() else None
+    except ValueError:
+        st.error("Area must be a number (e.g. 1.0 for 1 cm^2).")
+        area = None
     controls = _fit_controls("batch")
     run = st.button("▶ Run batch", type="primary")
     if run:
@@ -230,6 +238,7 @@ def batch_tab() -> None:
                 quick_fit_kwargs=_quick_kwargs(controls)
                 if controls["refine"]
                 else None,
+                area=area,
                 progress=cb,
             )
         progress.progress(1.0, text="done")
@@ -261,7 +270,7 @@ def batch_tab() -> None:
         if choice:
             stem = Path(choice).stem
             params = batch_mod.load_fit(out, stem)
-            data = EISData.from_csv(str(Path(in_dir or ".") / choice))
+            data = EISData.from_csv(str(Path(in_dir or ".") / choice), area=area)
             left, right = st.columns(2)
             with left:
                 st.pyplot(plots.nyquist_figure(data, [("fit", params)]))
@@ -344,15 +353,62 @@ def live_tab() -> None:
         st.pyplot(plots.nyquist_figure(data, fits))
 
 
+def analysis_tab() -> None:
+    st.header("Analysis of fitted results")
+    from blowing_bubbles.ui import analysis as analysis_mod
+    from blowing_bubbles.ui import analysis_plots
+
+    out = st.session_state.get("batch_out") or st.text_input(
+        "Batch output folder", key="analysis_out"
+    )
+    in_dir = st.session_state.get("batch_in") or st.text_input(
+        "Batch input folder", key="analysis_in"
+    )
+    if not out or not Path(out).exists():
+        st.info("Run a batch first, or point at an existing output folder.")
+        return
+    report_path = Path(out) / "batch_report.csv"
+    if not report_path.exists():
+        st.error(f"No batch_report.csv in {out}.")
+        return
+    report = batch_mod.load_report(out)
+    table = analysis_mod.analysis_table(out, report)
+    st.subheader("Resistance breakdown per file")
+    st.dataframe(table)
+    st.pyplot(analysis_plots.resistance_overview_figure(table))
+
+    ok = report[report.get("success", False).astype(bool)]["file"].tolist()
+    if ok and in_dir:
+        st.subheader("Difference spectra (ΔZ vs reference)")
+        reference = st.selectbox("Reference file", ok, key="analysis_ref")
+        picks = st.multiselect(
+            "Files to compare", ok, default=ok[:3], key="analysis_pick"
+        )
+        mode = st.radio(
+            "Plot", ["-Im(ΔZ)", "|ΔZ|"], horizontal=True, key="analysis_mode"
+        )
+        if reference and picks:
+            diff = analysis_mod.difference_spectra(in_dir, out, picks, reference)
+            st.pyplot(
+                analysis_plots.difference_figure(
+                    diff, reference, mode="imag" if mode == "-Im(ΔZ)" else "mag"
+                )
+            )
+
+
 def main() -> None:
     st.title("BlowingBubbles — EIS circuit fitting")
-    tab_single, tab_batch, tab_live = st.tabs(["Single", "Batch", "Live Tune"])
+    tab_single, tab_batch, tab_live, tab_analysis = st.tabs(
+        ["Single", "Batch", "Live Tune", "Analysis"]
+    )
     with tab_single:
         single_tab()
     with tab_batch:
         batch_tab()
     with tab_live:
         live_tab()
+    with tab_analysis:
+        analysis_tab()
 
 
 main()
