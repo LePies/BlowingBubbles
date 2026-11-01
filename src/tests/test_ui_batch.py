@@ -53,6 +53,20 @@ def test_run_batch_continues_on_error(spectra_folder, tmp_path):
     assert broken["error"]
 
 
+def test_run_batch_normalizes_by_area(spectra_folder, tmp_path):
+    out_raw = tmp_path / "raw"
+    out_norm = tmp_path / "norm"
+    kwargs = {"n_restarts": 3, "rc_groups": 1, "seed": 0}
+    batch_mod.run_batch(spectra_folder, out_raw, fit_kwargs=kwargs)
+    batch_mod.run_batch(spectra_folder, out_norm, fit_kwargs=kwargs, area=2.0)
+    raw = pd.read_csv(out_raw / "fits" / "cell_00_fit.csv")
+    norm = pd.read_csv(out_norm / "fits" / "cell_00_fit.csv")
+    assert norm["Zreal (Ohm)"].iloc[0] == pytest.approx(
+        2.0 * raw["Zreal (Ohm)"].iloc[0]
+    )
+    assert norm["Zfit_real"].iloc[0] == pytest.approx(2.0 * raw["Zfit_real"].iloc[0])
+
+
 def test_load_report_and_fit(spectra_folder, tmp_path):
     out_dir = tmp_path / "out"
     batch_mod.run_batch(

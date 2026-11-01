@@ -211,6 +211,14 @@ def batch_tab() -> None:
     st.header("Batch: fit a folder")
     in_dir = st.text_input("Input folder (CSV spectra)", key="batch_in")
     out_dir = st.text_input("Output folder", key="batch_out")
+    area_text = st.text_input(
+        "Normalize by electrode area (cm^2, empty = none)", "", key="batch_area"
+    )
+    try:
+        area = float(area_text) if area_text.strip() else None
+    except ValueError:
+        st.error("Area must be a number (e.g. 1.0 for 1 cm^2).")
+        area = None
     controls = _fit_controls("batch")
     run = st.button("▶ Run batch", type="primary")
     if run:
@@ -230,6 +238,7 @@ def batch_tab() -> None:
                 quick_fit_kwargs=_quick_kwargs(controls)
                 if controls["refine"]
                 else None,
+                area=area,
                 progress=cb,
             )
         progress.progress(1.0, text="done")
@@ -261,7 +270,7 @@ def batch_tab() -> None:
         if choice:
             stem = Path(choice).stem
             params = batch_mod.load_fit(out, stem)
-            data = EISData.from_csv(str(Path(in_dir or ".") / choice))
+            data = EISData.from_csv(str(Path(in_dir or ".") / choice), area=area)
             left, right = st.columns(2)
             with left:
                 st.pyplot(plots.nyquist_figure(data, [("fit", params)]))
