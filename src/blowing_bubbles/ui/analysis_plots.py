@@ -21,20 +21,31 @@ RESISTANCE_SERIES = [
 def resistance_overview_figure(
     table: pd.DataFrame,
     series: list[tuple[str, str]] | None = None,
+    extra_series: dict[str, str] | None = None,
 ) -> plt.Figure:
     """Resistance breakdown vs file index — one line per series.
 
-    Mirrors the run overview plot (x = cell/file, lines = Rs/R1/Rrest/Rp/Rtot).
+    ``series`` is a list of ``(label, color)``; ``extra_series`` maps a
+    label to a table column (used for user-selected R_i columns and the
+    aggregated R_rest).
     """
     ok = table[table.get("success", True).astype(bool)] if len(table) else table
     fig, ax = plt.subplots(figsize=(8, 4.5))
     x = np.arange(len(ok))
-    for label, color in series or RESISTANCE_SERIES:
-        if label not in ok.columns:
+    all_series: list[tuple[str, str]] = list(series or RESISTANCE_SERIES)
+    if extra_series:
+        palette = ["tab:orange", "tab:red", "tab:purple", "tab:brown", "tab:pink"]
+        for i, label in enumerate(extra_series):
+            all_series.append((label, palette[i % len(palette)]))
+    for label, color in all_series:
+        if label not in ok.columns and not (extra_series and label in extra_series):
+            continue
+        col = extra_series.get(label, label) if extra_series else label
+        if col not in ok.columns:
             continue
         ax.plot(
             x,
-            ok[label].to_numpy(dtype=float),
+            ok[col].to_numpy(dtype=float),
             marker="o",
             markersize=4,
             linewidth=1.5,
