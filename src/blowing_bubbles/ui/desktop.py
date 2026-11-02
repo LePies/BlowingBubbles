@@ -18,11 +18,23 @@ display or WebView2 runtime.
 from __future__ import annotations
 
 import socket
+import sys
 import threading
 import time
 from pathlib import Path
 
-APP_PATH = Path(__file__).with_name("app.py")
+
+def _app_path() -> Path:
+    """Locate app.py — next to this file in source, in _MEIPASS when frozen."""
+    frozen_dir = getattr(sys, "_MEIPASS", None)
+    if frozen_dir:
+        candidate = Path(frozen_dir) / "app.py"
+        if candidate.exists():
+            return candidate
+    return Path(__file__).with_name("app.py")
+
+
+APP_PATH = _app_path()
 
 # Populated by the server thread if bootstrap.run raises; surfaced by main().
 START_ERROR: list[str] = []
