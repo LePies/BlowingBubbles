@@ -212,7 +212,9 @@ def fit_circuit(
     tau_bounds : tuple of float, optional
         Bounds on :math:`\tau_i = R_i C_i` forwarded to the fitter.
     resistance_source_bounds : tuple of float, optional
-        ``(R_s_min, R_s_max)`` box bounds for the source resistance.
+        ``(R_s_min, R_s_max)`` box bounds for the source resistance. The default
+        lower bound keeps :math:`R_s` strictly positive, so relative errors in
+        :math:`R_s` stay finite.
     resistance_branch_bounds : tuple of float, optional
         ``(R_min, R_max)`` uniform box bounds for all branch resistances.
     exponent_bounds : tuple of float, optional

@@ -85,6 +85,33 @@ def test_impedance_fit_default_no_bounds(eis, initial_params):
     assert result.parameters is not None
 
 
+def test_impedance_fit_default_rs_strictly_positive(eis, initial_params):
+    """Default lower bound keeps R_s > 0, so the R_s relative error is finite."""
+    result = impendance_fit(
+        eis,
+        n_groups=1,
+        complex_fit=True,
+        initial_parameters=initial_params,
+        n_restarts=1,
+    )
+    rs = result.parameters.resistance_source
+    assert rs > 0.0
+    assert np.isfinite(abs(rs - 10.0) / rs)
+
+
+def test_impedance_fit_zero_rs_bound_keeps_floor(eis, initial_params):
+    """An explicit non-positive R_s_min must not re-enable R_s = 0."""
+    result = impendance_fit(
+        eis,
+        n_groups=1,
+        complex_fit=True,
+        initial_parameters=initial_params,
+        n_restarts=1,
+        resistance_source_bounds=(0.0, np.inf),
+    )
+    assert result.parameters.resistance_source > 0.0
+
+
 def test_impedance_fit_resistance_source_bounds(eis, initial_params):
     result = impendance_fit(
         eis,
