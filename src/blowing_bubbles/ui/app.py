@@ -417,8 +417,26 @@ def analysis_tab() -> None:
     report = batch_mod.load_report(out)
     table = analysis_mod.analysis_table(out, report)
     st.subheader("Resistance breakdown per file")
-    st.dataframe(table)
-    st.pyplot(analysis_plots.resistance_overview_figure(table))
+    st.caption(
+        "Click a column header to sort. To reorder manually, edit the "
+        "'order' column in the table below (lower = earlier on the plot)."
+    )
+    sortable = table.copy()
+    if "order" not in sortable.columns:
+        sortable.insert(0, "order", range(len(sortable)))
+    edited = st.data_editor(
+        sortable,
+        num_rows="fixed",
+        hide_index=True,
+        column_config={"order": st.column_config.NumberColumn(min_value=0)},
+        key="analysis_table_editor",
+    )
+    try:
+        ordered = edited.sort_values("order").drop(columns=["order"])
+    except (KeyError, TypeError):
+        ordered = table
+    st.dataframe(ordered.drop(columns=["order"], errors="ignore"), hide_index=True)
+    st.pyplot(analysis_plots.resistance_overview_figure(ordered))
 
     ok = report[report.get("success", False).astype(bool)]["file"].tolist()
     if ok and in_dir:
