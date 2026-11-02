@@ -41,6 +41,9 @@ METADATA_PACKAGES = [
 ]
 
 datas = list(streamlit_datas)
+# The Streamlit entry script itself — bootstrap.run needs a real file path,
+# and in a onefile build it must live in the _MEIPASS bundle root.
+datas.append((str(Path("src/blowing_bubbles/ui/app.py")), "."))
 for pkg in METADATA_PACKAGES:
     try:
         datas += copy_metadata(pkg)
