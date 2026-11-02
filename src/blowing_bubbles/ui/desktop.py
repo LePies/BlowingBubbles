@@ -25,13 +25,22 @@ from pathlib import Path
 
 
 def _app_path() -> Path:
-    """Locate app.py — next to this file in source, in _MEIPASS when frozen."""
+    """Locate app.py — next to this file in source, in the bundle when frozen.
+
+    Onefile builds extract to ``sys._MEIPASS``; onedir builds use
+    ``_internal/`` next to the launcher (exposed as ``sys._MEIPASS`` too in
+    PyInstaller >= 6).
+    """
     frozen_dir = getattr(sys, "_MEIPASS", None)
+    candidates = []
     if frozen_dir:
-        candidate = Path(frozen_dir) / "app.py"
+        candidates.append(Path(frozen_dir) / "app.py")
+        candidates.append(Path(frozen_dir) / "_internal" / "app.py")
+    candidates.append(Path(__file__).with_name("app.py"))
+    for candidate in candidates:
         if candidate.exists():
             return candidate
-    return Path(__file__).with_name("app.py")
+    return candidates[-1]
 
 
 APP_PATH = _app_path()

@@ -1,6 +1,7 @@
 # PyInstaller spec for the BlowingBubbles desktop app (pywebview window).
 # Build:  uv sync --group desktop && uv run pyinstaller desktop.spec --clean
-# Output: dist/BlowingBubbles.exe (Windows) / dist/BlowingBubbles (macOS/Linux)
+# Output: dist/BlowingBubbles/ folder with BlowingBubbles.exe launcher
+# (onedir: no _MEI temp extraction on every launch, much faster startup).
 
 from pathlib import Path
 
@@ -63,11 +64,12 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# Onedir layout: a tiny launcher exe plus a _internal/ folder with the full
+# bundle. Onefile would re-extract everything to a _MEI temp dir per launch.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
+    [],  # binaries/datas are passed to COLLECT, not embedded in the exe
     [],
     name="BlowingBubbles",
     debug=False,
@@ -76,4 +78,11 @@ exe = EXE(
     upx=False,
     console=False,  # windowed app: no console window on Windows
     icon=None,
+    exclude_binaries=True,  # onedir: payload goes to COLLECT, not the exe
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    name="BlowingBubbles",
 )

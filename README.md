@@ -31,7 +31,9 @@ Edge WebView2, no browser chrome):
 
 ```bash
 uv sync --group desktop
-uv run pyinstaller desktop.spec     # produces dist/BlowingBubbles.exe
+uv run pyinstaller desktop.spec --clean
+# produces dist/BlowingBubbles/ with the launcher BlowingBubbles.exe inside
+# (onedir build: starts much faster than onefile; ship the whole folder)
 ```
 
 The exe needs the WebView2 runtime on the target machine (preinstalled on
