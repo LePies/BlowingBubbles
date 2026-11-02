@@ -67,6 +67,19 @@ def test_run_batch_normalizes_by_area(spectra_folder, tmp_path):
     assert norm["Zfit_real"].iloc[0] == pytest.approx(2.0 * raw["Zfit_real"].iloc[0])
 
 
+def test_run_batch_with_explicit_file_subset(spectra_folder, tmp_path):
+    out_dir = tmp_path / "out"
+    only = [spectra_folder / "cell_01.csv"]
+    report = batch_mod.run_batch(
+        spectra_folder,
+        out_dir,
+        fit_kwargs={"n_restarts": 3, "rc_groups": 1, "seed": 0},
+        files=only,
+    )
+    assert list(report["file"]) == ["cell_01.csv"]
+    assert not (out_dir / "fits" / "cell_00_parameters.json").exists()
+
+
 def test_load_report_and_fit(spectra_folder, tmp_path):
     out_dir = tmp_path / "out"
     batch_mod.run_batch(

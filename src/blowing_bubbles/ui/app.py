@@ -244,11 +244,28 @@ def batch_tab() -> None:
     except ValueError:
         st.error("Area must be a number (e.g. 1.0 for 1 cm^2).")
         area = None
+    csv_names = []
+    if in_dir and Path(in_dir).is_dir():
+        csv_names = sorted(p.name for p in Path(in_dir).glob("*.csv"))
+    selected: list[str] = csv_names
+    if csv_names:
+        with st.expander(f"Files to fit ({len(csv_names)} found)", expanded=False):
+            selected = st.multiselect(
+                "Select CSV files",
+                csv_names,
+                default=csv_names,
+                key="batch_files",
+            )
+        if not selected:
+            st.warning("No files selected — nothing to fit.")
     controls = _fit_controls("batch")
     run = st.button("▶ Run batch", type="primary")
     if run:
         if not in_dir or not out_dir:
             st.error("Set both input and output folders.")
+            return
+        if not selected:
+            st.error("Select at least one CSV file.")
             return
         progress = st.progress(0.0, text="Starting...")
 
@@ -264,6 +281,7 @@ def batch_tab() -> None:
                 if controls["refine"]
                 else None,
                 area=area,
+                files=[Path(in_dir) / name for name in selected],
                 progress=cb,
             )
         progress.progress(1.0, text="done")
