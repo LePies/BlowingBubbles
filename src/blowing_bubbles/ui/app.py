@@ -212,17 +212,28 @@ def single_tab() -> None:
 
 
 def _folder_row(label: str, key: str) -> str:
-    """Text field + native 'Browse' button (desktop app) for a folder path."""
+    """Text field + native 'Browse' button (desktop app) for a folder path.
+
+    The picked path is stored under ``<key>_picked`` (a non-widget key) via
+    an on_click callback, which runs before the widget is instantiated;
+    writing ``st.session_state[key]`` directly would raise
+    StreamlitWidgetAlreadyInstantiatedError because ``key`` is the text
+    input's widget key.
+    """
     from blowing_bubbles.ui import folder_picker
 
-    cols = st.columns([4, 1])
-    value = cols[0].text_input(label, key=key)
-    if cols[1].button("📂 Browse", key=f"{key}_browse"):
+    picked_key = f"{key}_picked"
+
+    def _on_browse() -> None:
         picked = folder_picker.pick_folder()
         if picked:
-            st.session_state[key] = picked
-            st.rerun()
-    return st.session_state.get(key, value)
+            st.session_state[picked_key] = picked
+
+    cols = st.columns([4, 1])
+    default = st.session_state.get(picked_key, "")
+    cols[0].text_input(label, key=key, value=default if default else None)
+    cols[1].button("📂 Browse", key=f"{key}_browse", on_click=_on_browse)
+    return st.session_state.get(key, "")
 
 
 def batch_tab() -> None:

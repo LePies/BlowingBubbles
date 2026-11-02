@@ -29,3 +29,17 @@ def test_batch_tab_rerun_does_not_raise_widget_error():
     at.session_state["batch_report"] = None
     at.run()
     assert not at.exception
+
+
+def test_browse_button_click_does_not_raise_widget_error():
+    """Regression: Browse must not write the text input's own widget key."""
+    at = AppTest.from_file(str(APP_PATH), default_timeout=60)
+    at.run()
+    assert not at.exception
+    at.session_state["batch_in_picked"] = "/tmp/picked"
+    at.run()
+    assert not at.exception
+    browse = [b for b in at.button if "Browse" in (b.label or "")]
+    assert len(browse) == 2
+    browse[0].click().run()
+    assert not at.exception
