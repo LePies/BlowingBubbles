@@ -19,16 +19,11 @@ def test_app_path_points_at_streamlit_app():
     assert desktop.APP_PATH.exists()
 
 
-def test_start_streamlit_command_shape():
-    import sys
-    from unittest.mock import patch
-
-    with patch("blowing_bubbles.ui.desktop.subprocess.Popen") as popen:
-        desktop.start_streamlit(9999)
-    cmd = popen.call_args[0][0]
-    assert cmd[:3] == [sys.executable, "-m", "streamlit"]
-    assert "9999" in cmd
-    assert "--server.headless" in cmd
+def test_start_streamlit_inprocess_serves_healthz():
+    port = desktop.free_port()
+    thread = desktop.start_streamlit_inprocess(port)
+    assert thread.daemon and thread.is_alive()
+    assert desktop.wait_for_server(port, timeout=30.0) is True
 
 
 def test_wait_for_server_times_out_on_dead_port():

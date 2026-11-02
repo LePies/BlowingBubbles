@@ -1,21 +1,24 @@
 r"""Desktop entry point: Streamlit UI inside a native pywebview window.
 
-Runs the Streamlit server on a random free localhost port in a background
-thread, then opens a pywebview window pointed at it (Edge WebView2 on
-Windows). Packaged with PyInstaller via ``desktop.spec``::
+Runs the Streamlit server in-process on a random free localhost port (a
+daemon thread via ``streamlit.web.bootstrap.run``), then opens a pywebview
+window pointed at it (Edge WebView2 on Windows). Packaged with PyInstaller
+via ``desktop.spec``::
 
     uv sync --group desktop
     uv run pyinstaller desktop.spec
 
-The pywebview import is lazy so this module stays importable (and testable)
-on machines without a display or WebView2 runtime.
+The server is started in-process rather than as ``python -m streamlit``
+because inside a PyInstaller bundle the subprocess form cannot resolve the
+streamlit module and the server never starts. The pywebview import is lazy
+so this module stays importable (and testable) on machines without a
+display or WebView2 runtime.
 """
 
 from __future__ import annotations
 
 import socket
-import subprocess
-import sys
+import threading
 import time
 from pathlib import Path
 
@@ -29,22 +32,49 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def start_streamlit(port: int) -> subprocess.Popen:
-    """Launch the Streamlit server for ``app.py`` on ``port`` (headless)."""
-    cmd = [
-        sys.executable,
-        "-m",
-        "streamlit",
-        "run",
-        str(APP_PATH),
-        "--server.headless",
-        "true",
-        "--server.port",
-        str(port),
-        "--browser.gatherUsageStats",
-        "false",
-    ]
-    return subprocess.Popen(cmd)
+def start_streamlit_inprocess(port: int) -> threading.Thread:
+    """Start the Streamlit server for ``app.py`` on a daemon thread.
+
+    ``bootstrap.run`` installs signal handlers, which only works in the main
+    thread — so when called from a non-main thread (tests, embedded hosts)
+    we neutralize ``signal.signal`` for the duration of the call. In the
+    packaged desktop app this function is invoked from ``main()`` (the main
+    thread), where the patch is skipped.
+    """
+    from streamlit import config  # noqa: PLC0415 — lazy import
+    from streamlit.web import bootstrap  # noqa: PLC0415 — lazy import
+
+    # bootstrap.run only applies flag_options when config files change, so
+    # set the options directly as well — otherwise the server binds 8501.
+    config.set_option("server.port", port)
+    config.set_option("server.address", "127.0.0.1")
+    config.set_option("server.headless", True)
+    config.set_option("browser.gatherUsageStats", False)
+    flag_options = {
+        "server.port": port,
+        "server.address": "127.0.0.1",
+        "server.headless": True,
+        "browser.gatherUsageStats": False,
+    }
+
+    def _run() -> None:
+        import signal
+
+        if threading.current_thread() is not threading.main_thread():
+            # bootstrap.run installs signal handlers, which Python only
+            # allows in the main thread; patch it out in that case.
+            original = signal.signal
+            signal.signal = lambda *a, **k: None  # type: ignore[assignment]
+            try:
+                bootstrap.run(str(APP_PATH), False, [], flag_options)
+            finally:
+                signal.signal = original  # type: ignore[assignment]
+        else:
+            bootstrap.run(str(APP_PATH), False, [], flag_options)
+
+    thread = threading.Thread(target=_run, daemon=True, name="streamlit-server")
+    thread.start()
+    return thread
 
 
 def wait_for_server(port: int, timeout: float = 30.0) -> bool:
@@ -66,20 +96,19 @@ def main() -> None:
     import webview  # noqa: PLC0415 — lazy: needs WebView2 runtime at run time
 
     port = free_port()
-    server = start_streamlit(port)
-    try:
-        if not wait_for_server(port):
-            server.terminate()
-            raise RuntimeError(f"Streamlit server did not start on port {port}")
-        webview.create_window(
-            "BlowingBubbles",
-            f"http://127.0.0.1:{port}",
-            width=1280,
-            height=850,
+    start_streamlit_inprocess(port)
+    if not wait_for_server(port):
+        raise RuntimeError(
+            f"Streamlit server did not start on port {port}. "
+            "Is the streamlit package bundled (see desktop.spec hiddenimports)?"
         )
-        webview.start()
-    finally:
-        server.terminate()
+    webview.create_window(
+        "BlowingBubbles",
+        f"http://127.0.0.1:{port}",
+        width=1280,
+        height=850,
+    )
+    webview.start()
 
 
 if __name__ == "__main__":
