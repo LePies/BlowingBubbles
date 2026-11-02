@@ -63,8 +63,12 @@ def test_bic_finds_three_arcs_in_noisy_data(noise_seed):
     assert bics[-1] > bics[-2]
 
 
-def test_selection_none_keeps_old_behaviour(clean):
-    res = fit_circuit(clean, 4, rc_groups=3, seed=0)
+def test_selection_none_keeps_old_behaviour():
+    # Slightly noisy data: a redundant third branch always lowers the cost a
+    # little. (On clean data the two-branch fit is exact to round-off, so a
+    # third branch cannot lower the cost and this behaviour is not exercised.)
+    noisy = _data(TWO_ARC, FREQ, noise=0.002, seed=0)
+    res = fit_circuit(noisy, 4, rc_groups=3, seed=0)
     # Without a criterion any cost decrease is accepted, even a redundant branch.
     assert res.n_groups == 3
     assert all(h["accepted"] for h in res.history)

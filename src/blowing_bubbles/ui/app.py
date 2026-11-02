@@ -24,7 +24,11 @@ from blowing_bubbles.ui import batch as batch_mod
 from blowing_bubbles.ui import live as live_mod
 from blowing_bubbles.ui import plots
 
-st.set_page_config(page_title="BlowingBubbles", layout="wide")
+st.set_page_config(
+    page_title="BlowingBubbles",
+    page_icon=str(Path(__file__).with_name("assets") / "icon-256.png"),
+    layout="wide",
+)
 
 FREQ_GRID = np.logspace(-2, 5, 300)
 
@@ -207,10 +211,24 @@ def single_tab() -> None:
             )
 
 
+def _folder_row(label: str, key: str) -> str:
+    """Text field + native 'Browse' button (desktop app) for a folder path."""
+    from blowing_bubbles.ui import folder_picker
+
+    cols = st.columns([4, 1])
+    value = cols[0].text_input(label, key=key)
+    if cols[1].button("📂 Browse", key=f"{key}_browse"):
+        picked = folder_picker.pick_folder()
+        if picked:
+            st.session_state[key] = picked
+            st.rerun()
+    return st.session_state.get(key, value)
+
+
 def batch_tab() -> None:
     st.header("Batch: fit a folder")
-    in_dir = st.text_input("Input folder (CSV spectra)", key="batch_in")
-    out_dir = st.text_input("Output folder", key="batch_out")
+    in_dir = _folder_row("Input folder (CSV spectra)", "batch_in")
+    out_dir = _folder_row("Output folder", "batch_out")
     area_text = st.text_input(
         "Normalize by electrode area (cm^2, empty = none)", "", key="batch_area"
     )
@@ -243,7 +261,7 @@ def batch_tab() -> None:
             )
         progress.progress(1.0, text="done")
         st.session_state["batch_report"] = report
-        st.session_state["batch_out"] = out_dir
+        st.session_state["batch_out_dir"] = out_dir
 
     report = st.session_state.get("batch_report")
     if report is None and out_dir:
@@ -251,12 +269,12 @@ def batch_tab() -> None:
         if report_path.exists():
             report = batch_mod.load_report(out_dir)
             st.session_state["batch_report"] = report
-            st.session_state["batch_out"] = out_dir
+            st.session_state["batch_out_dir"] = out_dir
     if report is None:
         st.info("Run a batch or point the output folder at a previous run.")
         return
     st.dataframe(report)
-    out = st.session_state["batch_out"]
+    out = st.session_state["batch_out_dir"]
     summary = Path(out) / "batch_summary.png"
     if summary.exists():
         st.image(str(summary))
@@ -358,7 +376,7 @@ def analysis_tab() -> None:
     from blowing_bubbles.ui import analysis as analysis_mod
     from blowing_bubbles.ui import analysis_plots
 
-    out = st.session_state.get("batch_out") or st.text_input(
+    out = st.session_state.get("batch_out_dir") or st.text_input(
         "Batch output folder", key="analysis_out"
     )
     in_dir = st.session_state.get("batch_in") or st.text_input(

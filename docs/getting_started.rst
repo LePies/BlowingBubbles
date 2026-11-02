@@ -45,6 +45,21 @@ real time).
    streamlit run src/blowing_bubbles/ui/app.py
    # or: python -m blowing_bubbles.ui
 
+Desktop app (Windows)
++++++++++++++++++++++
+
+Package the UI as a standalone desktop application with a native window
+(Edge WebView2 via pywebview, no browser UI):
+
+.. code-block:: bash
+
+   uv sync --group desktop
+   uv run pyinstaller desktop.spec --clean
+   # produces dist/BlowingBubbles/ (onedir; launch BlowingBubbles.exe inside)
+
+The target machine needs the WebView2 runtime (preinstalled on Windows 11;
+a bootstrapper is available for Windows 10).
+
 .. code-block:: bash
 
    uv run python examples/plot_circuit_demo.py
