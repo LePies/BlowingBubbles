@@ -44,16 +44,26 @@ def start_streamlit_inprocess(port: int) -> threading.Thread:
     packaged desktop app this function is invoked from ``main()`` (the main
     thread), where the patch is skipped.
     """
-    from streamlit import config  # noqa: PLC0415 — lazy import
     from streamlit.web import bootstrap  # noqa: PLC0415 — lazy import
 
-    # bootstrap.run only applies flag_options when config files change, so
-    # set the options directly as well — otherwise the server binds 8501.
-    config.set_option("server.port", port)
-    config.set_option("server.address", "127.0.0.1")
-    config.set_option("server.headless", True)
-    config.set_option("browser.gatherUsageStats", False)
+    # In a frozen app the config is typically already parsed before we run,
+    # and bootstrap.run only applies flag_options when a config.toml changes.
+    # Force a re-parse with dot-separated flag names so the server binds the
+    # chosen port; this replaces the parsed option objects wholesale, which
+    # also works in frozen builds where config files are never re-read.
+    from streamlit.web.bootstrap import load_config_options  # noqa: PLC0415
+
+    load_config_options(
+        {
+            "global.developmentMode": False,
+            "server.port": port,
+            "server.address": "127.0.0.1",
+            "server.headless": True,
+            "browser.gatherUsageStats": False,
+        }
+    )
     flag_options = {
+        "global.developmentMode": False,
         "server.port": port,
         "server.address": "127.0.0.1",
         "server.headless": True,
