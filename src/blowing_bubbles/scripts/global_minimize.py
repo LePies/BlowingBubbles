@@ -108,12 +108,21 @@ def initial_fit(
 
 
 def tau_bounds_from_frequencies(freq: np.ndarray) -> tuple[float, float]:
-    """Characteristic τ scale from measured frequencies: (1/f_max, 1/f_min)."""
+    r"""Time constants whose apex lies inside the measured window.
+
+    Returns :math:`(1/(2\pi f_{\max}),\ 1/(2\pi f_{\min}))`, i.e. the range of
+    :math:`\tau` with apex frequency :math:`f = 1/(2\pi\tau)` between
+    :math:`f_{\min}` and :math:`f_{\max}`. (Before 0.3 the factor
+    :math:`2\pi` was missing, which excluded arcs peaking above
+    :math:`f_{\max}/2\pi`.) The bounds act on the stored products
+    :math:`R_iQ_i`; for :math:`n_i = 1` these equal the characteristic times.
+    """
     f = np.asarray(freq, dtype=float)
     f_pos = f[f > 0]
     if f_pos.size == 0:
         raise ValueError("Need at least one positive frequency for tau bounds.")
-    return (1.0 / float(np.max(f_pos)), 1.0 / float(np.min(f_pos)))
+    two_pi = 2.0 * np.pi
+    return (1.0 / (two_pi * float(np.max(f_pos))), 1.0 / (two_pi * float(np.min(f_pos))))
 
 
 _INDUCTANCE_EST_TOL = 1e-15
@@ -124,6 +133,13 @@ _CPE_EXPONENT_MAX = 1.0
 _POSITIVE_FLOOR_REL = 1e-12
 # Smallest magnitude of a perturbed restart start value.
 _PERTURB_MIN_ABS = 1e-9
+# TRF termination tolerances (SciPy default 1e-8). Tighter values let the
+# solver reach parameters on their bounds (e.g. L = 0 with n_L >= 0.7) instead
+# of stopping at a tiny interior value.
+_TRF_TOL = 1e-12
+# Default inductor-exponent bounds when neither ``exponent_bounds`` nor
+# ``inductance_exponent_bounds`` is given (expert EK3 fits: n_L = 0.86-0.99).
+_DEFAULT_INDUCTANCE_EXPONENT_BOUNDS = (0.7, 1.0)
 
 
 def estimate_inductance_from_imag(
@@ -132,27 +148,45 @@ def estimate_inductance_from_imag(
 ) -> float:
     r"""Estimate :math:`L` from a weighted slope of :math:`\mathrm{Im}(Z)`.
 
-    Regresses :math:`\mathrm{Im}(Z)` against :math:`\omega`. For
+    Regresses :math:`\mathrm{Im}(Z)` against :math:`\omega` through the origin,
+    using the inductive points (:math:`\mathrm{Im}(Z) > 0`), or, for a negative
+    inductance, the top-frequency points where :math:`\mathrm{Im}(Z) < 0` grows
+    in magnitude with :math:`\omega`. For
     :math:`Z = R_s + j\omega L + \cdots` with :math:`n_L = 1`,
-    :math:`\mathrm{Im}(Z) \approx \omega L`, so :math:`L \approx d\mathrm{Im}/d\omega`.
-    Weights favor higher frequencies where the inductive tail dominates.
+    :math:`\mathrm{Im}(Z) \approx \omega L`. Weights favor higher frequencies.
+    Returns 0 for a purely capacitive high-frequency tail.
     """
     f = np.asarray(freq, dtype=float)
     im = np.asarray(imag, dtype=float)
-    mask = f > 0
-    if np.count_nonzero(mask) < 2:
-        return 0.0
+    # Only inductive points (Im Z > 0) carry information on L. Regressing over
+    # the capacitive tail, where Im Z rises towards zero, returned a spurious
+    # positive L for spectra without any inductive part.
+    pos = (f > 0) & (im > 0)
+    if np.count_nonzero(pos) >= 2:
+        mask = pos
+    else:
+        # Negative L shows as Im Z < 0 that grows in magnitude with omega at
+        # the top frequencies; a capacitive tail is negative but tends to 0.
+        fp = f > 0
+        if np.count_nonzero(fp) < 3:
+            return 0.0
+        order = np.argsort(f[fp])
+        k = max(3, int(np.ceil(0.2 * order.size)))
+        top = order[-k:]
+        f_top, im_top = f[fp][top], im[fp][top]
+        if not (np.all(im_top < 0) and np.polyfit(f_top, im_top, 1)[0] < 0):
+            return 0.0
+        mask = np.zeros_like(f, dtype=bool)
+        mask[np.flatnonzero(fp)[top]] = True
     f = f[mask]
     im = im[mask]
     omega = 2.0 * np.pi * f
     w = f / float(np.max(f))
-    w_mean_o = np.average(omega, weights=w)
-    w_mean_i = np.average(im, weights=w)
-    num = np.average((omega - w_mean_o) * (im - w_mean_i), weights=w)
-    den = np.average((omega - w_mean_o) ** 2, weights=w)
+    # Weighted least squares through the origin: Im Z ~ omega * L.
+    den = float(np.sum(w * omega**2))
     if den <= 0:
         return 0.0
-    return float(num / den)
+    return float(np.sum(w * omega * im) / den)
 
 
 def inductance_bounds_from_estimate(
@@ -551,6 +585,9 @@ def _solve_restart(problem: _FitProblem, init: np.ndarray) -> dict[str, Any]:
             bounds=(problem.lower, problem.upper),
             max_nfev=problem.max_nfev,
             x_scale="jac",
+            ftol=_TRF_TOL,
+            xtol=_TRF_TOL,
+            gtol=_TRF_TOL,
         )
     except (ValueError, np.linalg.LinAlgError) as exc:
         return {"error": f"{type(exc).__name__}: {exc}"}
@@ -733,6 +770,7 @@ def impedance_fit(
     resistance_source_bounds: tuple[float, float] | None = None,
     resistance_branch_bounds: tuple[float, float] | None = None,
     exponent_bounds: tuple[float, float] | None = None,
+    inductance_exponent_bounds: tuple[float, float] | None = None,
     weighting: str = "modulus",
     n_jobs: int | None = 1,
     executor: Executor | None = None,
@@ -823,9 +861,14 @@ def impedance_fit(
         :math:`\epsilon = 10^{-12}\,(\max Z' - \min Z')`. A positive
         ``R_min`` replaces :math:`\epsilon`; ``R_min <= 0`` keeps it.
     exponent_bounds : tuple of float, optional
-        ``(e_min, e_max)`` uniform box bounds for all CPE exponents (branch and
-        inductance exponent). Only used when ``complex_fit=True``. Overrides
-        the default ``(0.2, 1.0)``. If ``None``, the default bounds are used.
+        ``(e_min, e_max)`` uniform box bounds for all CPE exponents (branch and,
+        unless ``inductance_exponent_bounds`` is given, inductor). Only used
+        when ``complex_fit=True``. Overrides the default ``(0.2, 1.0)``.
+    inductance_exponent_bounds : tuple of float or None
+        Box bounds for the inductor exponent :math:`n_L`. If ``None`` (default),
+        ``exponent_bounds`` applies when given, otherwise ``(0.7, 1.0)``. Pass
+        ``(0.2, 1.0)`` for the pre-0.3 behaviour. A low :math:`n_L` gives the
+        inductor term a large real part, which can absorb the series resistance.
     weighting : {"modulus", "unit"}
         ``"modulus"`` (default): residuals divided by :math:`|Z_k|`, i.e. the
         relative error is minimised and every decade of frequency contributes.
@@ -991,6 +1034,19 @@ def impedance_fit(
         parameters_init[e_slice] = np.clip(
             parameters_init[e_slice], exp_lo, exp_hi
         )
+
+    # Inductor exponent: kept near an inductor by default. With n_L free down to
+    # 0.2 the term L (j omega)^n_L has a large real part and, together with a
+    # branch whose apex lies above f_max, can absorb the series resistance
+    # (R_s -> 0 in 24 % of the EK3 fits and most noisy synthetic fits).
+    nl_bounds = inductance_exponent_bounds
+    if nl_bounds is None and exponent_bounds is None:
+        nl_bounds = _DEFAULT_INDUCTANCE_EXPONENT_BOUNDS
+    if nl_bounds is not None and complex_fit:
+        nl_lo, nl_hi = nl_bounds
+        lower[2] = max(nl_lo, _CPE_EXPONENT_MIN)
+        upper[2] = min(nl_hi, _CPE_EXPONENT_MAX)
+        parameters_init[2] = np.clip(parameters_init[2], lower[2], upper[2])
 
     problem = _FitProblem(
         X,

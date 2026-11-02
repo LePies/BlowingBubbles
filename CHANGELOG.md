@@ -3,6 +3,25 @@
 ## Unreleased
 
 ### Fixed
+- **Series resistance collapsed to R_s = 0** in 20 of 83 EK3 fits and in most
+  noisy synthetic fits (33/50 at 1 %, 42/50 at 5 % noise). The inductor
+  exponent ran down to n_L ~ 0.4, where `L (jω)^n_L` has a large real part,
+  and together with a branch peaking above f_max it absorbed R_s (R_tot stayed
+  correct, so the R_tot-based screen did not catch it). The inductor exponent
+  now defaults to `inductance_exponent_bounds=(0.7, 1.0)` (expert EK3 values
+  0.86–0.99). `exponent_bounds`, when given, still applies to n_L as before;
+  pass `inductance_exponent_bounds=(0.2, 1.0)` for the old range.
+- **Spurious inductance start value.** `estimate_inductance_from_imag`
+  regressed over the capacitive tail and returned L > 0 for spectra without
+  any inductive part (6e-6 H for a pure two-arc test circuit). It now uses
+  only inductive points (Im Z > 0), or, for a negative inductance, top
+  frequencies where Im Z < 0 grows in magnitude; otherwise it returns 0.
+- TRF termination tolerances tightened to 1e-12 (SciPy default 1e-8) so
+  parameters can reach their bounds (e.g. L = 0) instead of stopping at a
+  tiny interior value.
+- `test_selection_none_keeps_old_behaviour` now uses slightly noisy data: on
+  clean data the two-branch fit is exact to round-off, so a redundant branch
+  can no longer lower the cost.
 - **`complex_fit=False` never produced a fit** (residual/Jacobian shape
   mismatch hidden by a blanket `except`). It now means ideal elements
   (`e_i = n_L = 1`) with complex residuals.
