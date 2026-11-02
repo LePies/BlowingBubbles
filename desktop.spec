@@ -1,17 +1,21 @@
 # PyInstaller spec for the BlowingBubbles desktop app (pywebview window).
-# Build:  uv sync --group desktop && uv run pyinstaller desktop.spec
+# Build:  uv sync --group desktop && uv run pyinstaller desktop.spec --clean
 # Output: dist/BlowingBubbles.exe (Windows) / dist/BlowingBubbles (macOS/Linux)
 
 from pathlib import Path
 
 import streamlit
-from PyInstaller.utils.hooks import copy_metadata
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 STREAMLIT_DIR = Path(streamlit.__file__).resolve().parent
 
-hiddenimports = [
-    "streamlit",
-    "streamlit.web.bootstrap",
+# Collect every streamlit submodule and every data file shipped with the
+# package (static frontend, vendor JS, protobufs, templates). Streamlit
+# lazy-imports many submodules at server start; missing ones kill the
+# server thread inside a frozen exe.
+streamlit_datas, streamlit_binaries, streamlit_hidden = collect_all("streamlit")
+
+hiddenimports = streamlit_hidden + collect_submodules("streamlit") + [
     "pywebview",
     "blowing_bubbles.ui.app",
     "blowing_bubbles.ui.analysis",
@@ -33,15 +37,10 @@ METADATA_PACKAGES = [
     "numpy",
     "scipy",
     "matplotlib",
-    "tornado",
     "pyarrow",
-    "blinker",
 ]
 
-datas = [
-    (str(STREAMLIT_DIR / "static"), "streamlit/static"),
-    (str(STREAMLIT_DIR / "vendor"), "streamlit/vendor"),
-]
+datas = list(streamlit_datas)
 for pkg in METADATA_PACKAGES:
     try:
         datas += copy_metadata(pkg)
@@ -51,12 +50,12 @@ for pkg in METADATA_PACKAGES:
 a = Analysis(
     [str(Path("src/blowing_bubbles/ui/desktop.py"))],
     pathex=[str(Path("src"))],
-    binaries=[],
+    binaries=streamlit_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=["tkinter", "PyQt5", "PyQt6", "PySide6"],
+    excludes=["tkinter", "PyQt5", "PyQt6", "PySide6", "wx"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
