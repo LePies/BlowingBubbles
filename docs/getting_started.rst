@@ -54,7 +54,8 @@ Package the UI as a standalone desktop application with a native window
 .. code-block:: bash
 
    uv sync --group desktop
-   uv run pyinstaller desktop.spec     # produces dist/BlowingBubbles.exe
+   uv run pyinstaller desktop.spec --clean
+   # produces dist/BlowingBubbles/ (onedir; launch BlowingBubbles.exe inside)
 
 The target machine needs the WebView2 runtime (preinstalled on Windows 11;
 a bootstrapper is available for Windows 10).
