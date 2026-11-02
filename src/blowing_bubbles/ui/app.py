@@ -436,7 +436,23 @@ def analysis_tab() -> None:
     except (KeyError, TypeError):
         ordered = table
     st.dataframe(ordered.drop(columns=["order"], errors="ignore"), hide_index=True)
-    st.pyplot(analysis_plots.resistance_overview_figure(ordered))
+    n_br = analysis_mod.max_branches(ordered)
+    branch_opts = list(range(1, n_br + 1))
+    default_sel = [1] if branch_opts else []
+    sel = st.multiselect(
+        "Branch resistances to plot (others are summed into R_rest)",
+        branch_opts,
+        default=default_sel,
+        format_func=lambda i: f"R_{i} (tau-sorted)",
+        key="analysis_branches",
+    )
+    extra = analysis_mod.series_columns(ordered, sel)
+    base = [("Rs", "tab:blue"), ("Rp", "tab:green"), ("Rtot", "black")]
+    st.pyplot(
+        analysis_plots.resistance_overview_figure(
+            ordered, series=base, extra_series=extra
+        )
+    )
 
     ok = report[report.get("success", False).astype(bool)]["file"].tolist()
     if ok and in_dir:

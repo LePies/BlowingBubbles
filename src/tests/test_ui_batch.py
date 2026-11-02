@@ -132,6 +132,26 @@ def test_analysis_table_and_difference(spectra_folder, tmp_path):
     assert len(freq) == len(diff[names[1]][0])
 
 
+def test_series_columns_selected_vs_rest(spectra_folder, tmp_path):
+    from blowing_bubbles.ui import analysis as analysis_mod
+
+    out_dir = tmp_path / "out"
+    batch_mod.run_batch(
+        spectra_folder, out_dir, fit_kwargs={"n_restarts": 3, "rc_groups": 2, "seed": 0}
+    )
+    table = analysis_mod.analysis_table(out_dir)
+    n = analysis_mod.max_branches(table)
+    assert n >= 1
+    cols = analysis_mod.series_columns(table, [1])
+    assert "R_1" in cols
+    if n >= 2:
+        assert "R_rest" in cols
+        import numpy as np
+
+        expected = sum(table[f"R_{i}"] for i in range(2, n + 1))
+        assert np.allclose(table[cols["R_rest"]], expected)
+
+
 def test_nyquist_figure_runs(demo_data):
     import matplotlib.pyplot as plt
 

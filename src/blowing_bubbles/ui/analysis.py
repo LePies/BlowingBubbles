@@ -70,8 +70,40 @@ def analysis_table(
             entry["n_branches"] = len(params)
             entry["tau_min"] = float(np.min(params.taus)) if len(params) else np.nan
             entry["tau_max"] = float(np.max(params.taus)) if len(params) else np.nan
+            # Per-branch resistances, tau-sorted (index 0 = slowest branch).
+            for i, r in enumerate(np.asarray(params.resistances, dtype=float)):
+                entry[f"R_{i + 1}"] = float(r)
         rows.append(entry)
     return pd.DataFrame(rows)
+
+
+def max_branches(table: pd.DataFrame) -> int:
+    """Highest branch index present in the table (0 if none)."""
+    n = 0
+    for col in table.columns:
+        if col.startswith("R_") and col[2:].isdigit():
+            n = max(n, int(col[2:]))
+    return n
+
+
+def series_columns(table: pd.DataFrame, selected: list[int]) -> dict[str, str]:
+    """Map plot series labels to table columns for the chosen branch indices.
+
+    Selected branches get their own line (R_1, R_2, ... in tau-sorted
+    order); all unselected branches are summed into R_rest. Rs, Rp and Rtot
+    are always available.
+    """
+    n = max_branches(table)
+    selected = [i for i in selected if 1 <= i <= n]
+    cols: dict[str, str] = {}
+    rest_indices = [i for i in range(1, n + 1) if i not in selected]
+    if rest_indices:
+        rest_col = "R_rest_selected"
+        table[rest_col] = table[[f"R_{i}" for i in rest_indices]].sum(axis=1)
+        cols["R_rest"] = rest_col
+    for i in selected:
+        cols[f"R_{i}"] = f"R_{i}"
+    return cols
 
 
 def load_spectrum(
