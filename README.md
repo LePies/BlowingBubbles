@@ -24,6 +24,19 @@ uv sync --group ui
 streamlit run src/blowing_bubbles/ui/app.py   # or: python -m blowing_bubbles.ui
 ```
 
+### Windows desktop app
+
+The same UI can be packaged as a standalone desktop app (native window via
+Edge WebView2, no browser chrome):
+
+```bash
+uv sync --group desktop
+uv run pyinstaller desktop.spec     # produces dist/BlowingBubbles.exe
+```
+
+The exe needs the WebView2 runtime on the target machine (preinstalled on
+Windows 11; a bootstrapper is available for Windows 10).
+
 ## Documentation
 
 Build locally with `Build-OmpyDocs` or see `docs/getting_started.rst`.
