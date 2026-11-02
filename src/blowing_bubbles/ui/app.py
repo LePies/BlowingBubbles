@@ -257,7 +257,7 @@ def batch_tab() -> None:
             )
         progress.progress(1.0, text="done")
         st.session_state["batch_report"] = report
-        st.session_state["batch_out"] = out_dir
+        st.session_state["batch_out_dir"] = out_dir
 
     report = st.session_state.get("batch_report")
     if report is None and out_dir:
@@ -265,12 +265,12 @@ def batch_tab() -> None:
         if report_path.exists():
             report = batch_mod.load_report(out_dir)
             st.session_state["batch_report"] = report
-            st.session_state["batch_out"] = out_dir
+            st.session_state["batch_out_dir"] = out_dir
     if report is None:
         st.info("Run a batch or point the output folder at a previous run.")
         return
     st.dataframe(report)
-    out = st.session_state["batch_out"]
+    out = st.session_state["batch_out_dir"]
     summary = Path(out) / "batch_summary.png"
     if summary.exists():
         st.image(str(summary))
@@ -372,7 +372,7 @@ def analysis_tab() -> None:
     from blowing_bubbles.ui import analysis as analysis_mod
     from blowing_bubbles.ui import analysis_plots
 
-    out = st.session_state.get("batch_out") or st.text_input(
+    out = st.session_state.get("batch_out_dir") or st.text_input(
         "Batch output folder", key="analysis_out"
     )
     in_dir = st.session_state.get("batch_in") or st.text_input(
