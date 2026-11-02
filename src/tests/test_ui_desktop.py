@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+from unittest.mock import patch
 
 from blowing_bubbles.ui import desktop
 
@@ -29,3 +30,10 @@ def test_start_streamlit_inprocess_serves_healthz():
 def test_wait_for_server_times_out_on_dead_port():
     port = desktop.free_port()
     assert desktop.wait_for_server(port, timeout=0.5) is False
+
+
+def test_pick_folder_returns_none_without_backend():
+    from blowing_bubbles.ui import folder_picker
+
+    with patch.dict("sys.modules", {"webview": None, "tkinter": None}):
+        assert folder_picker.pick_folder() is None
