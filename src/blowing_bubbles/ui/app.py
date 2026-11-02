@@ -24,7 +24,11 @@ from blowing_bubbles.ui import batch as batch_mod
 from blowing_bubbles.ui import live as live_mod
 from blowing_bubbles.ui import plots
 
-st.set_page_config(page_title="BlowingBubbles", layout="wide")
+st.set_page_config(
+    page_title="BlowingBubbles",
+    page_icon=str(Path(__file__).with_name("assets") / "icon-256.png"),
+    layout="wide",
+)
 
 FREQ_GRID = np.logspace(-2, 5, 300)
 

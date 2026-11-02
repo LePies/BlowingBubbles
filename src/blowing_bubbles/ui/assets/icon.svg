@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14508C"/>
+      <stop offset="1" stop-color="#0A2540"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.72" cy="0.3" r="0.9">
+      <stop offset="0" stop-color="#3E7CB1" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#3E7CB1" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile">
+      <rect x="0" y="0" width="1024" height="1024" rx="220" ry="220"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <rect width="1024" height="1024" fill="url(#glow)"/>
+    <!-- Nyquist semicircle -->
+    <line x1="100" y1="690" x2="520" y2="690" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="10" stroke-linecap="round"/>
+    <path d="M 100 690 A 210 210 0 0 1 520 690" fill="none" stroke="#FFC24B" stroke-width="34" stroke-linecap="round"/>
+    <circle cx="310" cy="480" r="20" fill="#FFC24B"/>
+    <!-- bubbles -->
+    <g fill="#FFFFFF" fill-opacity="0.10" stroke="#FFFFFF" stroke-opacity="0.70" stroke-width="10">
+      <circle cx="690" cy="620" r="190"/>
+      <circle cx="830" cy="300" r="105"/>
+      <circle cx="545" cy="250" r="58"/>
+      <circle cx="655" cy="130" r="32"/>
+    </g>
+    <!-- bubble highlights -->
+    <g fill="none" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width="14" stroke-linecap="round">
+      <path d="M 585 505 A 190 190 0 0 1 690 430"/>
+      <path d="M 775 225 A 105 105 0 0 1 830 195"/>
+      <path d="M 512 212 A 58 58 0 0 1 545 192"/>
+      <path d="M 633 106 A 32 32 0 0 1 655 98"/>
+    </g>
+  </g>
+</svg>
