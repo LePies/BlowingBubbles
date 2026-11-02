@@ -207,10 +207,24 @@ def single_tab() -> None:
             )
 
 
+def _folder_row(label: str, key: str) -> str:
+    """Text field + native 'Browse' button (desktop app) for a folder path."""
+    from blowing_bubbles.ui import folder_picker
+
+    cols = st.columns([4, 1])
+    value = cols[0].text_input(label, key=key)
+    if cols[1].button("📂 Browse", key=f"{key}_browse"):
+        picked = folder_picker.pick_folder()
+        if picked:
+            st.session_state[key] = picked
+            st.rerun()
+    return st.session_state.get(key, value)
+
+
 def batch_tab() -> None:
     st.header("Batch: fit a folder")
-    in_dir = st.text_input("Input folder (CSV spectra)", key="batch_in")
-    out_dir = st.text_input("Output folder", key="batch_out")
+    in_dir = _folder_row("Input folder (CSV spectra)", "batch_in")
+    out_dir = _folder_row("Output folder", "batch_out")
     area_text = st.text_input(
         "Normalize by electrode area (cm^2, empty = none)", "", key="batch_area"
     )
