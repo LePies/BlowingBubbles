@@ -465,6 +465,7 @@ class EISData:
         resistance_source_bounds: tuple[float, float] | None = None,
         resistance_branch_bounds: tuple[float, float] | None = None,
         exponent_bounds: tuple[float, float] | None = None,
+        inductance_exponent_bounds: tuple[float, float] | None = None,
         weighting: str = "modulus",
         n_jobs: int | None = 1,
         early_stop: int | None = None,
@@ -520,6 +521,7 @@ class EISData:
             resistance_source_bounds=resistance_source_bounds,
             resistance_branch_bounds=resistance_branch_bounds,
             exponent_bounds=exponent_bounds,
+            inductance_exponent_bounds=inductance_exponent_bounds,
             weighting=weighting,
             n_jobs=n_jobs,
             early_stop=early_stop,
@@ -587,6 +589,7 @@ class EISData:
         resistance_source_bounds: tuple[float, float] | None = None,
         resistance_branch_bounds: tuple[float, float] | None = None,
         exponent_bounds: tuple[float, float] | None = None,
+        inductance_exponent_bounds: tuple[float, float] | None = None,
         weighting: str = "modulus",
     ) -> FitResults:
         r"""Quick fit of the parametric R–CPE ladder to this spectrum.
@@ -627,6 +630,7 @@ class EISData:
             resistance_source_bounds = resistance_source_bounds,
             resistance_branch_bounds = resistance_branch_bounds,
             exponent_bounds = exponent_bounds,
+            inductance_exponent_bounds = inductance_exponent_bounds,
             weighting = weighting,
         )
 
@@ -643,6 +647,7 @@ def fit_circuit(
     resistance_source_bounds: tuple[float, float] | None = None,
     resistance_branch_bounds: tuple[float, float] | None = None,
     exponent_bounds: tuple[float, float] | None = None,
+    inductance_exponent_bounds: tuple[float, float] | None = None,
     weighting: str = "modulus",
     n_jobs: int | None = 1,
     early_stop: int | None = None,
@@ -661,6 +666,7 @@ def fit_circuit(
         resistance_source_bounds=resistance_source_bounds,
         resistance_branch_bounds=resistance_branch_bounds,
         exponent_bounds=exponent_bounds,
+        inductance_exponent_bounds=inductance_exponent_bounds,
         weighting=weighting,
         n_jobs=n_jobs,
         early_stop=early_stop,
@@ -689,6 +695,7 @@ def quick_fit(
     resistance_source_bounds: tuple[float, float] | None = None,
     resistance_branch_bounds: tuple[float, float] | None = None,
     exponent_bounds: tuple[float, float] | None = None,
+    inductance_exponent_bounds: tuple[float, float] | None = None,
     weighting: str = "modulus",
 ) -> FitResults:
     """Quick fit of an R–CPE ladder to *data* using default parameters.
@@ -729,5 +736,6 @@ def quick_fit(
         resistance_source_bounds = resistance_source_bounds,
         resistance_branch_bounds = resistance_branch_bounds,
         exponent_bounds = exponent_bounds,
+        inductance_exponent_bounds = inductance_exponent_bounds,
         weighting = weighting,
     )

@@ -168,6 +168,7 @@ def fit_circuit(
     resistance_source_bounds: tuple[float, float] | None = None,
     resistance_branch_bounds: tuple[float, float] | None = None,
     exponent_bounds: tuple[float, float] | None = None,
+    inductance_exponent_bounds: tuple[float, float] | None = None,
     weighting: str = "modulus",
     n_jobs: int | None = 1,
     early_stop: int | None = None,
@@ -216,6 +217,9 @@ def fit_circuit(
         ``(R_min, R_max)`` uniform box bounds for all branch resistances.
     exponent_bounds : tuple of float, optional
         ``(e_min, e_max)`` uniform box bounds for all CPE exponents.
+    inductance_exponent_bounds : tuple of float or None
+        Bounds on the inductor exponent :math:`n_L`; default ``(0.7, 1.0)``
+        unless ``exponent_bounds`` is given.
     weighting : {"modulus", "unit"}
         Residual weighting passed to the fitter. ``"modulus"`` (default) divides
         each residual by :math:`|Z_k|`, so small high-frequency arcs carry weight;
@@ -282,7 +286,11 @@ def fit_circuit(
             resistance_branch_bounds=resistance_branch_bounds,
             exponent_bounds=exponent_bounds,
             weighting=weighting,
-            fit_kwargs={"executor": pool, "early_stop": early_stop},
+            fit_kwargs={
+                "executor": pool,
+                "early_stop": early_stop,
+                "inductance_exponent_bounds": inductance_exponent_bounds,
+            },
             selection=selection,
             min_improvement=min_improvement,
         )
