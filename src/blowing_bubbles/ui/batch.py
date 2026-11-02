@@ -42,6 +42,7 @@ def run_batch(
     quick_fit_kwargs: dict | None = None,
     pattern: str = "*.csv",
     area: float | None = None,
+    files: list[str | Path] | None = None,
     progress=None,
 ) -> pd.DataFrame:
     """Fit every CSV in ``input_dir`` and write results to ``output_dir``.
@@ -60,6 +61,9 @@ def run_batch(
     area : float, optional
         Electrode area in cm^2. If given, every spectrum is normalized to
         area-specific impedance (Ohm cm^2) on load, before fitting.
+    files : list of path-like, optional
+        Explicit subset of files to fit. If ``None``, all files matching
+        ``pattern`` in ``input_dir`` are used.
     progress : callable, optional
         Called as ``progress(i, n, filename)`` after each file.
 
@@ -81,7 +85,10 @@ def run_batch(
     fits_dir.mkdir(parents=True, exist_ok=True)
     fit_kwargs = dict(fit_kwargs or {})
 
-    files = sorted(input_dir.glob(pattern))
+    if files is None:
+        files = sorted(input_dir.glob(pattern))
+    else:
+        files = sorted(Path(f) for f in files)
     rows: list[dict] = []
     data_by_name: dict[str, EISData] = {}
     params_by_name: dict[str, CircuitParameters] = {}
