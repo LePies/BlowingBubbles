@@ -24,6 +24,9 @@ from pathlib import Path
 
 APP_PATH = Path(__file__).with_name("app.py")
 
+# Populated by the server thread if bootstrap.run raises; surfaced by main().
+START_ERROR: list[str] = []
+
 
 def free_port() -> int:
     """Pick an unused TCP port on localhost."""
@@ -59,18 +62,24 @@ def start_streamlit_inprocess(port: int) -> threading.Thread:
 
     def _run() -> None:
         import signal
+        import traceback
 
-        if threading.current_thread() is not threading.main_thread():
-            # bootstrap.run installs signal handlers, which Python only
-            # allows in the main thread; patch it out in that case.
-            original = signal.signal
-            signal.signal = lambda *a, **k: None  # type: ignore[assignment]
-            try:
+        try:
+            if threading.current_thread() is not threading.main_thread():
+                # bootstrap.run installs signal handlers, which Python only
+                # allows in the main thread; patch it out in that case.
+                original = signal.signal
+                signal.signal = lambda *a, **k: None  # type: ignore[assignment]
+                try:
+                    bootstrap.run(str(APP_PATH), False, [], flag_options)
+                finally:
+                    signal.signal = original  # type: ignore[assignment]
+            else:
                 bootstrap.run(str(APP_PATH), False, [], flag_options)
-            finally:
-                signal.signal = original  # type: ignore[assignment]
-        else:
-            bootstrap.run(str(APP_PATH), False, [], flag_options)
+        except BaseException:
+            # Daemon-thread exceptions are invisible in a windowed exe —
+            # record them so main() can report the real cause.
+            START_ERROR.append(traceback.format_exc())
 
     thread = threading.Thread(target=_run, daemon=True, name="streamlit-server")
     thread.start()
@@ -98,10 +107,8 @@ def main() -> None:
     port = free_port()
     start_streamlit_inprocess(port)
     if not wait_for_server(port):
-        raise RuntimeError(
-            f"Streamlit server did not start on port {port}. "
-            "Is the streamlit package bundled (see desktop.spec hiddenimports)?"
-        )
+        detail = f"\nServer thread error:\n{START_ERROR[0]}" if START_ERROR else ""
+        raise RuntimeError(f"Streamlit server did not start on port {port}.{detail}")
     webview.create_window(
         "BlowingBubbles",
         f"http://127.0.0.1:{port}",
