@@ -8,6 +8,8 @@ callers should keep a plain text field as fallback (browser mode).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 
 def _pick_with_pywebview() -> str | None:
     try:
@@ -18,9 +20,14 @@ def _pick_with_pywebview() -> str | None:
     if not windows:
         return None
     try:
-        result = windows[0].create_file_dialog(webview.FOLDER_DIALOG)
+        result = webview.create_file_dialog(
+            webview.FOLDER_DIALOG, directory=str(Path.home())
+        )
     except Exception:
-        return None
+        try:
+            result = windows[0].create_file_dialog(webview.FOLDER_DIALOG)
+        except Exception:
+            return None
     # Newer pywebview returns a list/tuple, older returns a bare string.
     if isinstance(result, (list, tuple)):
         return result[0] if result else None

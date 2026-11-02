@@ -59,7 +59,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=["tkinter", "PyQt5", "PyQt6", "PySide6", "wx"],
+    excludes=["PyQt5", "PyQt6", "PySide6", "wx"],  # keep tkinter: fallback folder dialog
     noarchive=False,
 )
 pyz = PYZ(a.pure)
