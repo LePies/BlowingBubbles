@@ -7,6 +7,11 @@ the R–CPE equivalent circuit, and fit branch parameters.
 
 Released under the [MIT License](LICENSE): free use, modification, and redistribution.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup (uv, ruff, ty,
+deptry, pytest). To report a security issue, see [SECURITY.md](SECURITY.md).
+
 ## Citation (published scientific work)
 
 If you use BlowingBubbles in **published** scientific work (papers, theses, preprints,
