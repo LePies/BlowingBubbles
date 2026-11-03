@@ -1,4 +1,11 @@
-"""Figures for the Analysis tab (Streamlit-independent)."""
+"""Build the figures for the Analysis tab (Streamlit-independent).
+
+:func:`resistance_overview_figure` plots the per-file resistance breakdown and
+:func:`difference_figure` the difference spectra from
+:mod:`blowing_bubbles.ui.analysis`. ``RESISTANCE_SERIES`` lists the default
+``(label, color)`` series. Importing this module selects the non-interactive
+``Agg`` matplotlib backend.
+"""
 
 from __future__ import annotations
 
@@ -23,11 +30,28 @@ def resistance_overview_figure(
     series: list[tuple[str, str]] | None = None,
     extra_series: dict[str, str] | None = None,
 ) -> plt.Figure:
-    """Resistance breakdown vs file index — one line per series.
+    """Plot the resistance breakdown vs file, one line per series.
 
-    ``series`` is a list of ``(label, color)``; ``extra_series`` maps a
-    label to a table column (used for user-selected R_i columns and the
-    aggregated R_rest).
+    Parameters
+    ----------
+    table : pandas.DataFrame
+        Table from :func:`~blowing_bubbles.ui.analysis.analysis_table` (with a
+        ``"file"`` column). Rows with a false ``"success"`` value are dropped;
+        the remaining rows are plotted in table order.
+    series : list of tuple of str, optional
+        ``(label, color)`` pairs; each label is also the table column plotted.
+        ``None`` uses ``RESISTANCE_SERIES``. Labels without a matching column
+        are skipped.
+    extra_series : dict of str to str, optional
+        Additional series mapping a label to a table column (used for
+        user-selected ``R_i`` columns and the aggregated ``R_rest``, see
+        :func:`~blowing_bubbles.ui.analysis.series_columns`). Colors cycle
+        through a fixed palette.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Line plot of resistance (Ω) with the file names as x tick labels.
     """
     ok = table[table.get("success", True).astype(bool)] if len(table) else table
     fig, ax = plt.subplots(figsize=(8, 4.5))
@@ -66,7 +90,27 @@ def difference_figure(
     reference: str,
     mode: str = "imag",
 ) -> plt.Figure:
-    """Difference spectra Delta Z vs frequency (mirrors the im_diff plots)."""
+    r"""Plot difference spectra :math:`\Delta Z` vs frequency.
+
+    Mirrors the im_diff plots.
+
+    Parameters
+    ----------
+    diff : dict of str to tuple of numpy.ndarray
+        ``{name: (freq, delta_z)}`` from
+        :func:`~blowing_bubbles.ui.analysis.difference_spectra`, with ``freq``
+        in Hz and complex ``delta_z`` in Ω.
+    reference : str
+        Name of the reference file; its (zero) entry is not plotted.
+    mode : {"imag", "mag"}, default "imag"
+        ``"imag"`` plots :math:`-\mathrm{Im}(\Delta Z)`; any other value plots
+        :math:`|\Delta Z|`.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Semilog-x plot with one line per compared file.
+    """
     fig, ax = plt.subplots(figsize=(7, 4.5))
     for name, (freq, dz) in diff.items():
         if name == reference:

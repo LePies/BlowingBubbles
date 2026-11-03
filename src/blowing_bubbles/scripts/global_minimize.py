@@ -1,7 +1,13 @@
 r"""Bounded nonlinear least-squares fitting of the equivalent circuit to EIS data.
 
-Minimizes residuals between measured and model impedance
-:math:`Z_{\mathrm{pred}}(\omega_k; \mathbf{p})` at frequencies :math:`\omega_k`.
+Minimizes the (weighted) residuals between the measured impedance and the model
+impedance :math:`Z_{\mathrm{pred}}(\omega_k; \mathbf{p})` at the measured
+frequencies :math:`\omega_k`, using SciPy's trust-region-reflective solver with
+multiple restarts. The main entry point is :func:`impedance_fit`; helpers build
+start values (:func:`initial_fit`), time-constant bounds
+(:func:`tau_bounds_from_frequencies`), inductance estimates and bounds
+(:func:`estimate_inductance_from_imag`, :func:`inductance_bounds_from_estimate`)
+and a reusable process pool for parallel restarts (:func:`make_process_pool`).
 """
 
 from __future__ import annotations
@@ -34,10 +40,49 @@ def initial_fit(
     tau_bounds: tuple[float, float] | None = None,
     max_peaks: int | None = None,
 ) -> CircuitParameters:
-    r"""Heuristic initial guess from Nyquist peak structure in ``-Im(Z)``.
+    r"""Build a heuristic initial guess from the Nyquist peak structure of ``-Im(Z)``.
 
-    Peaks in the negative imaginary part define branch resistances (arc widths in
-    :math:`Z'`) and time constants :math:`\tau \approx 1/f_{\mathrm{peak}}`.
+    Each peak of :math:`-\mathrm{Im}(Z)` becomes one ideal RC branch. Useful as
+    ``initial_parameters`` for :func:`impedance_fit`.
+
+    Parameters
+    ----------
+    eis : EISData
+        Measured spectrum (``Freq`` in Hz, ``Real`` and ``Imag`` in Ω).
+    prominence : float, default 0.01
+        Minimum peak prominence, relative to the peak-to-peak range of
+        :math:`-\mathrm{Im}(Z)`.
+    tau_bounds : tuple of float, optional
+        ``(tau_min, tau_max)`` in s; the estimated time constants are clipped
+        to this range. ``None`` applies no clipping.
+    max_peaks : int, optional
+        Keep only the ``max_peaks`` most prominent peaks. ``None`` keeps all.
+
+    Returns
+    -------
+    CircuitParameters
+        One branch per retained peak, with :math:`n_L = 1` and all branch
+        exponents equal to 1.
+
+    See Also
+    --------
+    impedance_fit
+
+    Notes
+    -----
+    Peaks are found with :func:`scipy.signal.find_peaks`. If none is found
+    (e.g. a truncated arc), a single branch is seeded at the point of largest
+    :math:`-\mathrm{Im}(Z)`. Between neighbouring peaks the minimum of
+    :math:`-\mathrm{Im}(Z)` marks a valley; the data edges bound the first and
+    last arc.
+
+    - :math:`R_i` is the arc width :math:`|Z'_{\mathrm{right}} - Z'_{\mathrm{left}}|`
+      between its bracketing valleys (or edges), floored at
+      :math:`10^{-6}` of the :math:`Z'` span so :math:`C_i` stays finite.
+    - :math:`\tau_i = 1/(2\pi f_{\mathrm{peak}})` (apex of an ideal RC arc),
+      optionally clipped to ``tau_bounds``; :math:`C_i = \tau_i / R_i`.
+    - :math:`R_s` is :math:`Z'` at the highest measured frequency.
+    - :math:`L` comes from :func:`estimate_inductance_from_imag`.
     """
     # Find all peaks with the given prominence
     prom = prominence * np.ptp(-eis.Imag)
@@ -108,14 +153,36 @@ def initial_fit(
 
 
 def tau_bounds_from_frequencies(freq: np.ndarray) -> tuple[float, float]:
-    r"""Time constants whose apex lies inside the measured window.
+    r"""Return the time-constant range whose apex lies inside the measured window.
 
-    Returns :math:`(1/(2\pi f_{\max}),\ 1/(2\pi f_{\min}))`, i.e. the range of
-    :math:`\tau` with apex frequency :math:`f = 1/(2\pi\tau)` between
-    :math:`f_{\min}` and :math:`f_{\max}`. (Before 0.3 the factor
-    :math:`2\pi` was missing, which excluded arcs peaking above
-    :math:`f_{\max}/2\pi`.) The bounds act on the stored products
-    :math:`R_iQ_i`; for :math:`n_i = 1` these equal the characteristic times.
+    Intended as ``tau_bounds`` for :func:`impedance_fit` and
+    :func:`initial_fit`.
+
+    Parameters
+    ----------
+    freq : numpy.ndarray, shape (n_freq,)
+        Measured frequencies in Hz. Non-positive entries are ignored.
+
+    Returns
+    -------
+    tau_min : float
+        :math:`1/(2\pi f_{\max})` in s.
+    tau_max : float
+        :math:`1/(2\pi f_{\min})` in s.
+
+    Raises
+    ------
+    ValueError
+        If ``freq`` contains no positive frequency.
+
+    Notes
+    -----
+    The range contains every :math:`\tau` whose apex frequency
+    :math:`f = 1/(2\pi\tau)` lies between :math:`f_{\min}` and
+    :math:`f_{\max}`. (Before 0.3 the factor :math:`2\pi` was missing, which
+    excluded arcs peaking above :math:`f_{\max}/2\pi`.) The bounds act on the
+    stored products :math:`R_iQ_i`; for :math:`n_i = 1` these equal the
+    characteristic times.
     """
     f = np.asarray(freq, dtype=float)
     f_pos = f[f > 0]
@@ -148,13 +215,45 @@ def estimate_inductance_from_imag(
 ) -> float:
     r"""Estimate :math:`L` from a weighted slope of :math:`\mathrm{Im}(Z)`.
 
-    Regresses :math:`\mathrm{Im}(Z)` against :math:`\omega` through the origin,
-    using the inductive points (:math:`\mathrm{Im}(Z) > 0`), or, for a negative
-    inductance, the top-frequency points where :math:`\mathrm{Im}(Z) < 0` grows
-    in magnitude with :math:`\omega`. For
-    :math:`Z = R_s + j\omega L + \cdots` with :math:`n_L = 1`,
-    :math:`\mathrm{Im}(Z) \approx \omega L`. Weights favor higher frequencies.
-    Returns 0 for a purely capacitive high-frequency tail.
+    Parameters
+    ----------
+    freq : numpy.ndarray, shape (n_freq,)
+        Frequencies in Hz.
+    imag : numpy.ndarray, shape (n_freq,)
+        Imaginary part of the impedance in Ω.
+
+    Returns
+    -------
+    float
+        Estimated inductance in H (may be negative). ``0.0`` when the spectrum
+        shows no inductive behaviour.
+
+    See Also
+    --------
+    inductance_bounds_from_estimate
+
+    Notes
+    -----
+    For :math:`Z = R_s + j\omega L + \cdots` with :math:`n_L = 1`,
+    :math:`\mathrm{Im}(Z) \approx \omega L` at high frequency. The function
+    regresses :math:`\mathrm{Im}(Z)` against :math:`\omega` through the origin,
+
+    .. math::
+
+        L = \frac{\sum_k w_k \omega_k \mathrm{Im}(Z_k)}{\sum_k w_k \omega_k^2},
+        \qquad w_k = f_k / \max_k f_k,
+
+    so higher frequencies weigh more. The points used are
+
+    - the inductive points (:math:`f > 0`, :math:`\mathrm{Im}(Z) > 0`) if there
+      are at least two of them;
+    - otherwise, for a negative inductance, the top 20 % (at least 3) of the
+      positive frequencies, provided all of them have :math:`\mathrm{Im}(Z) < 0`
+      and :math:`\mathrm{Im}(Z)` decreases with frequency there.
+
+    Returns 0 for a purely capacitive high-frequency tail (where
+    :math:`\mathrm{Im}(Z) < 0` tends to 0) or with fewer than 3 positive
+    frequencies in the fallback case.
     """
     f = np.asarray(freq, dtype=float)
     im = np.asarray(imag, dtype=float)
@@ -194,12 +293,33 @@ def inductance_bounds_from_estimate(
     *,
     margin: float = 2.0,
 ) -> tuple[float | None, float | None]:
-    r"""Signed box bounds on :math:`L` from a slope estimate.
+    r"""Return signed box bounds on :math:`L` from a slope estimate.
 
-    If :math:`L_{\mathrm{est}} < 0`: ``margin * L_est < L < 0``.
-    If :math:`L_{\mathrm{est}} > 0`: ``0 < L < margin * L_est``.
-    If :math:`|L_{\mathrm{est}}|` is negligible, returns ``(None, None)``
-    (no custom bounds).
+    Used by :func:`impedance_fit` when ``inductance_bounds=True``.
+
+    Parameters
+    ----------
+    L_est : float
+        Inductance estimate in H, e.g. from
+        :func:`estimate_inductance_from_imag`.
+    margin : float, default 2.0
+        Factor applied to ``L_est`` to obtain the outer bound.
+
+    Returns
+    -------
+    lower : float or None
+        Lower bound on :math:`L` in H.
+    upper : float or None
+        Upper bound on :math:`L` in H.
+
+    Notes
+    -----
+    - :math:`L_{\mathrm{est}} < 0`: ``margin * L_est <= L <= 0``.
+    - :math:`L_{\mathrm{est}} > 0`: ``0 <= L <= margin * L_est``.
+
+    ``(None, None)`` (no custom bounds) is returned when
+    :math:`|L_{\mathrm{est}}| < 10^{-15}`, when ``margin * L_est`` is not
+    finite, or when the resulting interval is empty (e.g. ``margin <= 0``).
     """
     L_est = float(L_est)
     if abs(L_est) < _INDUCTANCE_EST_TOL:
@@ -219,6 +339,7 @@ def inductance_bounds_from_estimate(
 def _normalize_tau_bounds(
     tau_bounds: tuple[float, float] | None,
 ) -> tuple[float, float] | None:
+    """Return ``tau_bounds`` as an ordered float pair (swapped if reversed)."""
     if tau_bounds is None:
         return None
     tau_lo, tau_hi = float(tau_bounds[0]), float(tau_bounds[1])
@@ -232,11 +353,12 @@ def _positive_floor(
     user_lo: float | None = None,
     user_hi: float | None = None,
 ) -> float:
-    """Strictly positive lower bound that never tightens user-supplied bounds.
+    """Return a strictly positive lower bound that never tightens user bounds.
 
     Returns ``max(floor', user_lo)`` where ``floor'`` is *floor* reduced, if
-    needed, to stay at or below a positive ``user_lo`` and below a positive
-    ``user_hi``. A user lower bound of ``0`` (or less) is replaced by the floor.
+    needed, to stay at or below a positive ``user_lo`` and at or below half a
+    positive ``user_hi``. A user lower bound of ``0`` (or less) is replaced by
+    the floor.
     """
     lo = float(floor)
     if user_lo is not None and user_lo > 0:
@@ -259,7 +381,7 @@ def _perturb_init(
     n_groups: int,
     local_exponents: bool,
 ) -> np.ndarray:
-    """Random restart start point around *base*, clipped to ``[lower, upper]``.
+    """Draw a random restart start point around *base*, clipped to the bounds.
 
     All entries get a log-normal multiplicative perturbation, which preserves
     their sign; magnitudes are floored at ``_PERTURB_MIN_ABS`` (zeros become
@@ -296,7 +418,7 @@ def _project_dtau(
     tau_lo: float,
     tau_hi: float,
 ) -> np.ndarray:
-    """Map Δτ so cumsum(Δτ) lies in [tau_lo, tau_hi] with Δτ >= 0."""
+    """Map Δτ so that ``cumsum(Δτ)`` lies in ``[tau_lo, tau_hi]`` with Δτ >= 0."""
     dtau = np.maximum(np.asarray(dtau, dtype=float), 0.0)
     tau = np.cumsum(dtau)
     tau = np.clip(tau, tau_lo, tau_hi)
@@ -315,7 +437,7 @@ def _build_center_linear_constraint(
     z_min: float,
     z_max: float,
 ) -> LinearConstraint:
-    """Hard limits: R_s <= z_min and R_s + sum(R) - R_N/2 <= z_max.
+    """Build the hard limits R_s <= z_min and R_s + sum(R) - R_N/2 <= z_max.
 
     The lower limit follows from Re Z(omega) >= R_s for every branch and for the
     CPE inductor; it stays valid when the high-frequency arc is truncated by the
@@ -331,6 +453,7 @@ def _build_center_linear_constraint(
 
 
 def _center_positions(p: np.ndarray, r_slice: slice) -> tuple[float, float]:
+    """Return ``(R_s, R_s + sum(R) - R_N/2)``, the constrained Nyquist positions."""
     Rs = p[0]
     R = p[r_slice]
     c_lo = Rs
@@ -345,6 +468,7 @@ def _constraints_satisfied(
     z_max: float,
     tol: float,
 ) -> bool:
+    """Return whether both hard center constraints hold within ``tol``."""
     c_lo, c_hi = _center_positions(p, r_slice)
     return c_lo <= z_min + tol and c_hi <= z_max + tol
 
@@ -361,7 +485,13 @@ def _project_feasible(
     dtau_slice: slice | None = None,
     tau_bounds: tuple[float, float] | None = None,
 ) -> np.ndarray:
-    """Clip to box bounds and satisfy Nyquist center / τ constraints."""
+    """Clip to box bounds and satisfy the Nyquist center and τ constraints.
+
+    Lowers ``R_s`` to ``z_min`` and scales the branch resistances down
+    proportionally (to no less than 1 % per pass, four passes) so the upper
+    center constraint holds, then projects the Δτ block with
+    ``_project_dtau``. Returns a new array; *p* is not modified.
+    """
     p = np.clip(p, lower, upper).copy()
     if n_groups == 0:
         return p
@@ -399,6 +529,9 @@ class _FitProblem:
     Module-level and picklable so restarts can run in worker processes. The
     forward model is evaluated once per parameter vector and cached, so the
     Jacobian at an accepted step reuses the intermediates of the residual call.
+
+    The optimizer vector is ``[R_s, L, (n_L,) R_1..R_n, Δτ_1..Δτ_n,
+    (e_1..e_n)]``; the bracketed entries exist only with ``complex_fit``.
     """
 
     def __init__(
@@ -451,12 +584,14 @@ class _FitProblem:
         self._state: tuple | None = None
 
     def __getstate__(self) -> dict:
+        """Return the pickle state without the forward-model cache."""
         state = self.__dict__.copy()
         state["_key"] = None
         state["_state"] = None
         return state
 
     def _forward(self, p: np.ndarray) -> tuple:
+        """Return cached ``(R, tau, s_L, S, D, Z)`` for the parameter vector *p*."""
         key = p.tobytes()
         if key != self._key:
             R = p[self.r_slice].copy()
@@ -472,14 +607,20 @@ class _FitProblem:
         return self._state
 
     def model(self, p: np.ndarray) -> np.ndarray:
+        """Return the model impedance (Ω, complex, shape (n_freq,)) at *p*."""
         return self._forward(np.asarray(p, dtype=float))[-1]
 
     def _margin_terms(self, p: np.ndarray) -> tuple[float, float]:
+        """Return the signed lower/upper margin violations (positive = violated)."""
         c_lo, c_hi = _center_positions(p, self.r_slice)
         return self.margin + (c_lo - self.z_min), self.margin - (self.z_max - c_hi)
 
     def residuals(self, p: np.ndarray) -> np.ndarray:
-        p = np.asarray(p, dtype=float)
+        """Return weighted ``[Re; Im]`` residuals plus the two margin penalties.
+
+        Shape ``(2 * n_freq + 2,)``.
+        """
+        p =np.asarray(p, dtype=float)
         diff = self._forward(p)[-1] - self.z
         m = self.m
         out = np.empty(2 * m + 2)
@@ -491,7 +632,11 @@ class _FitProblem:
         return out
 
     def jacobian(self, p: np.ndarray) -> np.ndarray:
-        p = np.asarray(p, dtype=float)
+        """Return the analytic Jacobian of :meth:`residuals`.
+
+        Shape ``(2 * n_freq + 2, n_params)``.
+        """
+        p =np.asarray(p, dtype=float)
         R, tau, s_l, S, D, _ = self._forward(p)
         # Z_i = R_i / D_i with D_i = 1 + tau_i S_i, so at fixed tau:
         #   dZ/dR_i = 1/D_i,  dZ/dtau_i = -R_i S_i / D_i^2,
@@ -521,10 +666,12 @@ class _FitProblem:
         return out
 
     def cost(self, p: np.ndarray) -> float:
-        r = self.residuals(p)
+        """Return ``0.5 * sum(residuals(p) ** 2)``, as in ``least_squares``."""
+        r =self.residuals(p)
         return 0.5 * float(np.dot(r, r))
 
     def project(self, p: np.ndarray) -> np.ndarray:
+        """Project *p* onto the bounds and constraints (``_project_feasible``)."""
         return _project_feasible(
             p,
             self.z_min,
@@ -539,6 +686,7 @@ class _FitProblem:
         )
 
     def satisfied(self, p: np.ndarray) -> bool:
+        """Return whether the hard center constraints hold at *p*."""
         return _constraints_satisfied(
             p, self.r_slice, self.z_min, self.z_max, self.constraint_tol
         )
@@ -546,6 +694,12 @@ class _FitProblem:
     def polish_if_infeasible(
         self, p: np.ndarray, cost: float
     ) -> tuple[np.ndarray, float]:
+        """Project *p*; if still infeasible, polish it with ``trust-constr``.
+
+        The polished point is kept if its cost does not exceed *cost* or it
+        satisfies the constraints; otherwise the projected *p* and the input
+        *cost* are returned. A failed polish emits a ``UserWarning``.
+        """
         p = self.project(p)
         if self.satisfied(p):
             return p, self.cost(p)
@@ -575,7 +729,11 @@ class _FitProblem:
 
 
 def _solve_restart(problem: _FitProblem, init: np.ndarray) -> dict[str, Any]:
-    """One TRF solve from *init*, projected (and polished) onto the constraints."""
+    """Run one TRF solve from *init*, then project (and polish) onto constraints.
+
+    Returns a dict with ``x``, ``cost``, ``polished``, ``nfev``, ``njev`` and
+    ``status``, or ``{"error": message}`` if the solver raised.
+    """
     try:
         res_ls = least_squares(
             problem.residuals,
@@ -608,7 +766,7 @@ def _solve_restart(problem: _FitProblem, init: np.ndarray) -> dict[str, Any]:
 
 
 def _parameter_covariance(problem: _FitProblem, x: np.ndarray) -> np.ndarray:
-    r"""Linearized covariance of the reported parameters at the solution *x*.
+    r"""Return the linearized covariance of the reported parameters at *x*.
 
     Uses the weighted impedance Jacobian :math:`J` (margin-penalty rows
     excluded) and the residual variance
@@ -664,15 +822,35 @@ _BLAS_THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS
 
 
 def _noop(_: int) -> None:
+    """Do nothing; submitted to force worker processes to start."""
     return None
 
 
 def make_process_pool(n_jobs: int | None = -1) -> ProcessPoolExecutor:
-    """Process pool for restarts whose workers use single-threaded BLAS.
+    """Create a process pool for restarts whose workers use single-threaded BLAS.
 
     Restart solves work on tiny matrices, so multithreaded BLAS in every worker
     only oversubscribes the CPU (and with many workers can exhaust memory).
-    Pass the pool as ``executor=`` to reuse it across fits.
+    Pass the pool as ``executor=`` to :func:`impedance_fit` to reuse it across
+    fits; the caller is responsible for shutting it down.
+
+    Parameters
+    ----------
+    n_jobs : int or None, default -1
+        Number of worker processes. ``None`` or ``0`` means 1; a negative value
+        means ``os.cpu_count() + 1 + n_jobs`` (at least 1), so ``-1`` uses all
+        cores.
+
+    Returns
+    -------
+    concurrent.futures.ProcessPoolExecutor
+        Pool with all workers already started.
+
+    Notes
+    -----
+    ``OMP_NUM_THREADS``, ``OPENBLAS_NUM_THREADS`` and ``MKL_NUM_THREADS`` are
+    set to ``"1"`` in ``os.environ`` while the workers start, then restored to
+    their previous values (or removed).
     """
     jobs = _resolve_n_jobs(n_jobs)
     saved = {k: os.environ.get(k) for k in _BLAS_THREAD_VARS}
@@ -691,6 +869,7 @@ def make_process_pool(n_jobs: int | None = -1) -> ProcessPoolExecutor:
 
 
 def _resolve_n_jobs(n_jobs: int | None) -> int:
+    """Map ``n_jobs`` to a worker count (None/0 -> 1, -k -> cpu_count + 1 - k)."""
     if n_jobs is None or n_jobs == 0:
         return 1
     if n_jobs < 0:
@@ -709,11 +888,14 @@ def _run_restarts(
     """Run restarts in order (or in parallel batches) with optional early stop.
 
     With ``early_stop=k`` the loop ends once ``k`` restarts reached the best
-    cost within ``early_stop_rtol``. Parallel runs check after each batch.
+    cost within ``early_stop_rtol``. Parallel runs check after each batch
+    (``n_jobs`` restarts, or ``os.cpu_count()`` with a supplied *executor* and
+    ``n_jobs == 1``). A pool created here is shut down before returning.
     """
     results: list[dict[str, Any]] = []
 
     def converged() -> bool:
+        """Return whether ``early_stop`` restarts share the best cost."""
         if early_stop is None:
             return False
         costs = [r["cost"] for r in results if "cost" in r]
@@ -776,13 +958,164 @@ def impedance_fit(
     executor: Executor | None = None,
     early_stop: int | None = None,
 ) -> FitResults:
-    r"""Bounded TRF least-squares fit of the equivalent circuit to ``data``.
+    r"""Fit the equivalent circuit to ``data`` by bounded TRF least squares.
 
+    The circuit is :math:`R_s` in series with an inductor (CPE-type,
+    :math:`L (j\omega)^{n_L}`) and ``n_groups`` parallel R–CPE branches. Each
+    restart runs SciPy's trust-region-reflective solver with an analytic
+    Jacobian; the lowest-cost solution is returned together with linearized
+    parameter uncertainties.
+
+    Parameters
+    ----------
+    data : EISData
+        Experimental EIS spectrum (``Freq`` in Hz, ``Real`` and ``Imag`` in Ω).
+    n_groups : int, default 2
+        Number of parallel R–CPE branches.
+    complex_fit : bool, default False
+        If ``True``, fit the CPE exponents :math:`e_i` and :math:`n_L`
+        (bounded to ``0.2 <= e <= 1``; :math:`n_L` to ``(0.7, 1.0)`` by
+        default, see ``inductance_exponent_bounds``). If ``False``, fix
+        :math:`e_i = 1` and :math:`n_L = 1` (ideal capacitors and inductor).
+        Residuals are complex (stacked real/imaginary) in both cases.
+    initial_parameters : CircuitParameters, optional
+        Starting point; its branch count must match ``n_groups`` (checked with
+        ``assert``). It is copied and sorted by :math:`\tau`, not modified.
+        ``None`` starts every parameter at ``1e-3`` except :math:`L`, which
+        starts at :func:`estimate_inductance_from_imag`; the start is then
+        projected onto the bounds and constraints.
+    n_restarts : int, default 1
+        Total number of starts (at least 1): the unperturbed start point plus
+        ``n_restarts - 1`` log-normal perturbations of it. The lowest cost is
+        kept. Perturbations keep the sign of every parameter (e.g. a negative
+        :math:`L`); with ``complex_fit`` about half of the perturbed starts
+        draw the exponents uniformly within their bounds, the others near the
+        start values.
+    seed : int, optional
+        Seed for :func:`numpy.random.default_rng` used for the restarts.
+        ``None`` gives non-reproducible restarts.
+    sigma : float, default 0.5
+        Log-normal scale of the restart perturbations.
+    tau_bounds : tuple of float, optional
+        ``(tau_min, tau_max)`` in s for each :math:`\tau_i` (swapped if given
+        in reverse order). ``None`` (default) leaves the time constants
+        unbounded (apart from the tiny positive floor on :math:`\tau_1`). Use
+        ``tau_bounds=tau_bounds_from_frequencies(data.Freq)`` to restrict them
+        to the measured window.
+    penalty_margin_weight : float, default 1.0
+        Weight on soft Nyquist margin violations (see Notes). Ignored when
+        ``penalty_weight`` is given.
+    penalty_weight : float, optional
+        Alias of ``penalty_margin_weight``; takes precedence when not ``None``.
+    z_margin_frac : float, default 0.0
+        Soft margin as a fraction of the :math:`Z'` span (see Notes).
+    z_margin_abs : float, default 0.0
+        Soft margin in Ω; the larger of the two margins is used.
+    max_nfev : int, optional
+        Maximum function evaluations per restart. ``None`` means
+        ``500 * n_params`` (number of optimizer parameters).
+    polish : bool, default True
+        If the projected TRF solution still violates the hard center
+        constraints, polish it with SciPy's ``trust-constr`` method.
+    polish_maxiter : int, default 50
+        Iteration cap for polishing.
+    constraint_tol : float, default 1e-9
+        Tolerance (Ω) for declaring the hard constraints satisfied.
+    inductance_bounds : bool, default False
+        If ``False``, :math:`L \ge 0` only. If ``True``, set signed box bounds
+        on :math:`L` from a frequency-weighted slope of :math:`\mathrm{Im}(Z)`
+        vs :math:`\omega` (see :func:`estimate_inductance_from_imag` and
+        :func:`inductance_bounds_from_estimate`); this allows a negative
+        :math:`L`. If the estimate is negligible, the default applies.
+    inductance_margin : float, default 2.0
+        Margin factor for the :math:`L` bounds from the slope estimate.
+    resistance_source_bounds : tuple of float, optional
+        ``(R_s_min, R_s_max)`` box bounds in Ω for the source resistance
+        :math:`R_s`. The lower bound is never below the strictly positive
+        floor :math:`10^{-12}\,(\max Z' - \min Z')` (a smaller ``R_s_min``
+        keeps the floor), so relative errors in :math:`R_s` stay finite.
+        ``None`` uses the floor and an upper bound of :math:`\infty`.
+    resistance_branch_bounds : tuple of float, optional
+        ``(R_min, R_max)`` uniform box bounds in Ω for all branch resistances.
+        If ``None``, defaults to :math:`(\epsilon, \infty)` with
+        :math:`\epsilon = 10^{-12}\,(\max Z' - \min Z')`. A positive
+        ``R_min`` replaces :math:`\epsilon`; ``R_min <= 0`` keeps it.
+    exponent_bounds : tuple of float, optional
+        ``(e_min, e_max)`` uniform box bounds for all CPE exponents (branch and,
+        unless ``inductance_exponent_bounds`` is given, inductor). Only used
+        when ``complex_fit=True``. Overrides the default ``(0.2, 1.0)``.
+    inductance_exponent_bounds : tuple of float, optional
+        Box bounds for the inductor exponent :math:`n_L`, intersected with
+        ``(0.2, 1.0)``. If ``None`` (default), ``exponent_bounds`` applies when
+        given, otherwise ``(0.7, 1.0)``. Pass ``(0.2, 1.0)`` for the pre-0.3
+        behaviour. Only used when ``complex_fit=True``.
+    weighting : {"modulus", "unit"}, default "modulus"
+        ``"modulus"``: residuals divided by :math:`|Z_k|`, i.e. the relative
+        error is minimised and every decade of frequency contributes.
+        ``"unit"``: unweighted residuals (behaviour of version 0.1).
+    n_jobs : int, default 1
+        Worker processes for the restarts (``1`` or ``None``: sequential;
+        ``-1``: all cores). Results do not depend on ``n_jobs`` unless
+        ``early_stop`` is set. On Windows/macOS the calling script needs an
+        ``if __name__ == "__main__":`` guard.
+    executor : concurrent.futures.Executor, optional
+        Reuse an existing pool (e.g. from :func:`make_process_pool`) instead of
+        creating one per call. It is not shut down.
+    early_stop : int, optional
+        Stop once this many restarts have reached the best cost (relative
+        tolerance ``1e-6``). ``None`` (default) runs all restarts.
+
+    Returns
+    -------
+    FitResults
+        Optimized parameters (branch capacitances in F, or CPE coefficients
+        when ``complex_fit``), the unweighted residual vector ``fun`` (stacked
+        real and imaginary parts, Ω), the weighted ``cost``, summed ``nfev`` and
+        ``njev`` over all restarts, and the parameter uncertainties
+        ``covariance``, ``standard_errors`` and ``correlation``.
+
+    Raises
+    ------
+    ValueError
+        If ``n_groups < 1``, ``weighting`` is unknown, or the sorted time
+        constants of ``initial_parameters`` are not non-decreasing from 0
+        (i.e. some :math:`\tau_i < 0`).
+    RuntimeError
+        If every restart failed with a solver error.
+
+    Warns
+    -----
+    UserWarning
+        If some (but not all) restarts failed, or a constraint polish failed.
+
+    See Also
+    --------
+    initial_fit : Heuristic start values.
+    tau_bounds_from_frequencies : Time-constant bounds from the data window.
+    blowing_bubbles.classes.data_classes.EISData.fit
+    blowing_bubbles.classes.data_classes.fit_circuit
+
+    Notes
+    -----
     **Objective.** With measured :math:`Z_k` and model
-    :math:`\hat{Z}_k = Z_{\mathrm{pred}}(\omega_k; \mathbf{p})`, residuals are the
-    stacked real and imaginary parts of the difference. Soft penalties keep
-    Nyquist arc centers inside the
-    measured :math:`Z'` range.
+    :math:`\hat{Z}_k = Z_{\mathrm{pred}}(\omega_k; \mathbf{p})`, the residuals
+    are the stacked real and imaginary parts of
+    :math:`w_k (\hat{Z}_k - Z_k)`, with :math:`w_k = 1/|Z_k|` (``"modulus"``)
+    or :math:`w_k = 1` (``"unit"``).
+
+    **Constraints.** Two hard constraints keep the Nyquist arcs inside the
+    measured :math:`Z'` range:
+
+    .. math::
+
+        R_s \le \min Z', \qquad R_s + \sum_i R_i - R_n/2 \le \max Z'.
+
+    They are enforced by projecting every start point and every TRF solution
+    (and, if needed, by polishing). Two soft penalty residuals, each equal to
+    ``w_pen * max(0, violation)``, push the solver to satisfy them with the
+    margin ``max(z_margin_abs, z_margin_frac * (max Z' - min Z'))``. The
+    penalty weight is ``penalty_weight`` (or ``penalty_margin_weight``) times
+    the median of :math:`w_k |Z_k|`.
 
     **Reparameterization.** Capacitances enter as non-negative increments
     :math:`\Delta\tau_i` with :math:`\tau_i = \sum_{j \le i} \Delta\tau_j` and
@@ -790,11 +1123,14 @@ def impedance_fit(
     branch resistances :math:`R_i` and :math:`\tau_1` have tiny strictly
     positive default lower bounds (:math:`10^{-12}` of the :math:`Z'` span and
     of :math:`1/\omega_{\max}`), so every :math:`C_i` is finite and positive.
+    With ``tau_bounds``, the TRF box bounds only enforce
+    :math:`\tau_1 \ge \tau_{\min}` and :math:`\Delta\tau_i \le \tau_{\max}`;
+    the full range :math:`\tau_i \in [\tau_{\min}, \tau_{\max}]` is enforced by
+    the projection.
 
-    **Uncertainties.** The returned :class:`FitResults` carries
-    ``covariance``, ``standard_errors`` and ``correlation`` of the reported
-    parameters (:meth:`CircuitParameters.to_array` order). They come from a
-    local linearization at the best solution,
+    **Uncertainties.** ``covariance``, ``standard_errors`` and ``correlation``
+    refer to the reported parameters (:meth:`CircuitParameters.to_array`
+    order). They come from a local linearization at the best solution,
     :math:`s^2 (J^T J)^{+}`, with :math:`J` the Jacobian of the *weighted*
     impedance residuals and :math:`s^2` their sum of squares divided by
     :math:`2M - p` (:math:`M` frequencies, :math:`p` free parameters). This
@@ -805,94 +1141,11 @@ def impedance_fit(
     Parameters fixed by the model (:math:`n_L`, :math:`e_i` with
     ``complex_fit=False``) have zero variance.
 
-    Parameters
-    ----------
-    data : EISData
-        Experimental EIS spectrum.
-    n_groups : int
-        Number of parallel R–CPE branches.
-    complex_fit : bool
-        If ``True``, fit the CPE exponents (bounded to ``0.2 <= e <= 1``); if
-        ``False``, fix :math:`e_i = 1` and :math:`n_L = 1` (ideal capacitors and
-        inductor). Residuals are complex (stacked real/imaginary) in both cases.
-    initial_parameters : CircuitParameters, optional
-        Starting point; branch count must match ``n_groups``.
-    n_restarts : int
-        Number of log-normal perturbation restarts (best cost is kept).
-        Perturbations keep the sign of every parameter (e.g. a negative
-        :math:`L`); with ``complex_fit`` half of the restarts draw the
-        exponents uniformly within their bounds.
-    seed : int, optional
-        RNG seed for restarts.
-    sigma : float
-        Log-normal scale for restart perturbations.
-    tau_bounds : tuple of float, optional
-        ``(tau_min, tau_max)`` for each :math:`\tau_i`. ``None`` (default)
-        leaves the time constants unbounded (apart from the tiny positive
-        floor on :math:`\tau_1`). Use :func:`tau_bounds_from_frequencies`
-        to restrict them to the measured window,
-        ``tau_bounds=tau_bounds_from_frequencies(data.Freq)``.
-    penalty_margin_weight, penalty_weight : float
-        Weight on soft Nyquist margin violations.
-    z_margin_frac, z_margin_abs : float
-        Optional soft margin on the constraints :math:`R_s \le \min Z'` and
-        :math:`R_s + \sum R_i - R_n/2 \le \max Z'` (default 0).
-    max_nfev : int, optional
-        Maximum function evaluations per restart (default ``500 * n_params``).
-    polish : bool
-        Run a trust-region polish step if hard constraints are violated.
-    polish_maxiter : int
-        Iteration cap for polishing.
-    constraint_tol : float
-        Tolerance for declaring constraints satisfied.
-    inductance_bounds : bool
-        Default ``False`` (only :math:`L \ge 0`). If ``True``, set signed box
-        bounds on :math:`L` from a frequency-weighted slope of
-        :math:`\mathrm{Im}(Z)` vs :math:`\omega` (see
-        :func:`estimate_inductance_from_imag`).
-    inductance_margin : float
-        Margin factor for ``L`` bounds from the slope estimate (default ``2.0``).
-    resistance_source_bounds : tuple of float, optional
-        ``(R_s_min, R_s_max)`` box bounds for the source resistance :math:`R_s`.
-        If ``None``, the lower bound defaults to a strictly positive floor
-        (``1e-12`` times the ``Z'`` span; a non-positive ``R_s_min`` keeps it)
-        so relative errors in :math:`R_s` stay finite; upper bound ``\\infty``.
-    resistance_branch_bounds : tuple of float, optional
-        ``(R_min, R_max)`` uniform box bounds for all branch resistances.
-        If ``None``, defaults to ``(\epsilon, \infty)`` with
-        :math:`\epsilon = 10^{-12}\,(\max Z' - \min Z')`. A positive
-        ``R_min`` replaces :math:`\epsilon`; ``R_min <= 0`` keeps it.
-    exponent_bounds : tuple of float, optional
-        ``(e_min, e_max)`` uniform box bounds for all CPE exponents (branch and,
-        unless ``inductance_exponent_bounds`` is given, inductor). Only used
-        when ``complex_fit=True``. Overrides the default ``(0.2, 1.0)``.
-    inductance_exponent_bounds : tuple of float or None
-        Box bounds for the inductor exponent :math:`n_L`. If ``None`` (default),
-        ``exponent_bounds`` applies when given, otherwise ``(0.7, 1.0)``. Pass
-        ``(0.2, 1.0)`` for the pre-0.3 behaviour. A low :math:`n_L` gives the
-        inductor term a large real part, which can absorb the series resistance.
-    weighting : {"modulus", "unit"}
-        ``"modulus"`` (default): residuals divided by :math:`|Z_k|`, i.e. the
-        relative error is minimised and every decade of frequency contributes.
-        ``"unit"``: unweighted residuals (behaviour of version 0.1).
-    n_jobs : int, optional
-        Worker processes for the restarts (``1``: sequential, default; ``-1``:
-        all cores). Results do not depend on ``n_jobs`` unless ``early_stop`` is
-        set. On Windows/macOS the calling script needs an
-        ``if __name__ == "__main__":`` guard.
-    executor : concurrent.futures.Executor, optional
-        Reuse an existing process pool instead of creating one per call.
-    early_stop : int, optional
-        Stop once this many restarts have reached the best cost (relative
-        tolerance ``1e-6``). ``None`` (default) runs all restarts.
+    **Inductor exponent.** A low :math:`n_L` gives the inductor term a large
+    real part, which together with a branch whose apex lies above
+    :math:`f_{\max}` can absorb the series resistance; hence the default
+    bounds ``(0.7, 1.0)``.
 
-    Returns
-    -------
-    FitResults
-        Optimized parameters, residual vectors and parameter uncertainties.
-
-    Notes
-    -----
     ``impendance_fit`` is a backward-compatible alias of this function.
     """
     if n_groups < 1:

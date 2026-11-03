@@ -8,6 +8,9 @@ constants, so it has no local minima; its residual estimates the noise and
 non-stationarity floor of the measurement. An equivalent-circuit fit whose
 residual is many times larger than that floor has not captured the spectrum
 (typically a local minimum) and is flagged without any reference annotation.
+
+Public entry points: :func:`fit_quality` (metrics and ``suspect`` flag for a
+fitted spectrum) and :func:`lin_kk` (the Lin-KK test itself).
 """
 
 from __future__ import annotations
@@ -18,7 +21,8 @@ from blowing_bubbles.circuit_impedance import circuit_impedance
 
 
 def _relative_rms(z_model: np.ndarray, z_data: np.ndarray) -> float:
-    w = 1.0 / np.maximum(np.abs(z_data), np.finfo(float).tiny)
+    """Return the RMS of ``|z_model - z_data| / |z_data|`` over all points."""
+    w =1.0 / np.maximum(np.abs(z_data), np.finfo(float).tiny)
     return float(np.sqrt(np.mean(np.abs((z_model - z_data) * w) ** 2)))
 
 
@@ -28,23 +32,65 @@ def lin_kk(
     c_threshold: float = 0.85,
     max_elements: int | None = None,
 ) -> dict:
-    r"""Linear Kramers-Kronig test with the :math:`\mu` criterion.
+    r"""Run a linear Kramers-Kronig (Lin-KK) test with the :math:`\mu` criterion.
 
-    Model: :math:`Z = R_0 + j\omega L + \sum_k R_k / (1 + j\omega\tau_k)` with
-    :math:`\tau_k` log-spaced over :math:`[1/\omega_{max}, 1/\omega_{min}]`,
-    solved by modulus-weighted linear least squares. Starting from two
-    elements per decade, the number of elements :math:`M` is increased until
-    :math:`\mu = 1 - \sum_{R_k<0}|R_k| / \sum_{R_k\ge0}|R_k|` drops below
-    ``c_threshold``.
+    Fits a Kramers-Kronig-compliant RC ladder by linear least squares; its
+    residual estimates the noise floor of the measurement (see
+    :func:`fit_quality`).
 
-    Returns a dict with ``M``, ``mu``, ``rms_rel`` (relative RMS residual) and
-    ``z_fit``.
+    Parameters
+    ----------
+    freq : numpy.ndarray, shape (n_freq,)
+        Frequencies in Hz; all must be finite and positive.
+    z : numpy.ndarray, shape (n_freq,)
+        Complex impedance in Ω.
+    c_threshold : float, default 0.85
+        Stop adding elements once :math:`\mu \le` ``c_threshold``.
+    max_elements : int, optional
+        Maximum number of RC elements. ``None`` means
+        ``max(m_min, n_freq // 2)``, with ``m_min`` the starting count.
+
+    Returns
+    -------
+    dict
+        ``M`` (int, number of RC elements used), ``mu`` (float),
+        ``rms_rel`` (float, relative RMS residual, see Notes) and ``z_fit``
+        (complex numpy.ndarray, shape (n_freq,), fitted impedance in Ω).
 
     Raises
     ------
     ValueError
         If ``freq`` is empty, contains non-finite or non-positive values, or
         does not have the same shape as ``z``.
+
+    See Also
+    --------
+    fit_quality
+
+    Notes
+    -----
+    Model (Schönleber et al., Electrochim. Acta 131 (2014) 20-27):
+
+    .. math::
+
+        Z = R_0 + j\omega L + \sum_{k=1}^{M} \frac{R_k}{1 + j\omega\tau_k},
+
+    with :math:`\tau_k` log-spaced over :math:`[1/\omega_{\max},
+    1/\omega_{\min}]`. :math:`R_0`, :math:`L` and :math:`R_k` are real and
+    solved by modulus-weighted linear least squares (weights
+    :math:`1/|Z|`). Starting from
+    :math:`M = \max(3, \lceil 2 \cdot \text{decades} \rceil)` (at least two
+    elements per decade, capped at ``max_elements``), :math:`M` is increased
+    by one until
+
+    .. math::
+
+        \mu = 1 - \frac{\sum_{R_k<0}|R_k|}{\sum_{R_k\ge0}|R_k|}
+
+    drops to ``c_threshold`` or below (:math:`\mu = 0` if all
+    :math:`R_k \le 0`). If it never does, the largest :math:`M` is used.
+    The relative RMS residual is
+    :math:`\sqrt{\mathrm{mean}(|Z_{\mathrm{fit}} - Z|^2 / |Z|^2)}`.
     """
     f = np.asarray(freq, dtype=float)
     z = np.asarray(z, dtype=complex)
@@ -113,25 +159,41 @@ def lin_kk(
 
 
 def fit_quality(data, parameters, kk_ratio_threshold: float = 3.0) -> dict:
-    r"""Label-free quality metrics for a fitted spectrum.
+    r"""Compute label-free quality metrics for a fitted spectrum.
+
+    Compares the relative RMS residual of the equivalent-circuit fit with the
+    Lin-KK noise floor of the same spectrum and with its low-frequency
+    resistance.
 
     Parameters
     ----------
     data : EISData
-        The measured spectrum.
+        The measured spectrum (``Freq`` in Hz, ``Real`` and ``Imag`` in Ω).
     parameters : CircuitParameters
         Fitted circuit (e.g. ``FitResults.parameters``).
-    kk_ratio_threshold : float
+    kk_ratio_threshold : float, default 3.0
         A fit is flagged ``suspect`` when its relative RMS residual exceeds
         ``kk_ratio_threshold`` times the Lin-KK residual.
 
     Returns
     -------
     dict
-        ``rms_rel_fit``, ``rms_rel_kk``, ``kk_ratio``, ``kk_M``, ``kk_mu``,
-        ``r_total_fit`` (:math:`R_s + \sum R_i`), ``r_total_lowf``
-        (:math:`Z'` at the lowest measured frequency), ``r_total_ratio`` and
-        the boolean ``suspect``.
+        Metrics with the keys
+
+        - ``rms_rel_fit`` : relative RMS residual of the circuit fit;
+        - ``rms_rel_kk`` : relative RMS residual of the Lin-KK fit;
+        - ``kk_ratio`` : ``rms_rel_fit / rms_rel_kk``;
+        - ``kk_M``, ``kk_mu`` : number of Lin-KK elements and final
+          :math:`\mu` (see :func:`lin_kk`);
+        - ``r_total_fit`` : :math:`R_s + \sum R_i` in Ω;
+        - ``r_total_lowf`` : :math:`Z'` at the lowest measured frequency, Ω;
+        - ``r_total_ratio`` : ``r_total_fit / r_total_lowf`` (NaN if
+          ``r_total_lowf == 0``);
+        - ``suspect`` : bool, ``kk_ratio > kk_ratio_threshold``.
+
+    See Also
+    --------
+    lin_kk
     """
     f = np.asarray(data.Freq, dtype=float)
     z = np.asarray(data.Real, dtype=float) + 1j * np.asarray(data.Imag, dtype=float)

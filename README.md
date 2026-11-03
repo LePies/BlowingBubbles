@@ -41,4 +41,18 @@ Windows 11; a bootstrapper is available for Windows 10).
 
 ## Documentation
 
-Build locally with `Build-OmpyDocs` or see `docs/getting_started.rst`.
+The documentation is built with [Sphinx](https://www.sphinx-doc.org/). The
+Sphinx dependencies are in the `docs` dependency group, which `uv sync`
+installs by default. From the project root:
+
+```bash
+uv sync
+uv run sphinx-build -b html docs docs/_build
+```
+
+Then open `docs/_build/index.html` in a browser.
+
+The build also runs the scripts in `examples/` to generate the example gallery.
+That takes a few minutes the first time; after that, only changed examples are
+re-run. To re-read all source files, add `-E`; to start completely fresh, delete
+`docs/_build/`. See `docs/getting_started.rst` for more details.

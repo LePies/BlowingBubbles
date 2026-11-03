@@ -12,7 +12,7 @@
   object-fit: contain;
 }
 
-/* Optional package icon on the landing page (Init-OmpyDocs -IconPath) */
+/* Optional package icon on the landing page */
 .package-icon-row {
   display: flex;
   justify-content: center;

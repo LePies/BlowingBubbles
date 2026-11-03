@@ -1,8 +1,11 @@
-"""Analysis helpers for fitted batch results (Streamlit-independent).
+r"""Analyse fitted batch results (Streamlit-independent).
 
-Derived from the im_diff / run overview scripts: per-file resistance
-breakdown (Rs, Rp, Rtot, per-branch R and tau) and difference spectra
-Delta Z = Z - Z_ref against a chosen reference file.
+Derived from the im_diff / run overview scripts. :func:`analysis_table` builds
+the per-file resistance breakdown (Rs, Rp, Rtot, per-branch R and tau) from a
+batch output folder, :func:`series_columns` and :func:`max_branches` select the
+branch columns to plot, and :func:`difference_spectra` computes model
+difference spectra :math:`\Delta Z = Z - Z_\mathrm{ref}` against a reference
+file. Used by the Analysis tab of the UI.
 """
 
 from __future__ import annotations
@@ -17,11 +20,25 @@ from blowing_bubbles.ui import batch as batch_mod
 
 
 def resistance_summary(params: CircuitParameters) -> dict[str, float]:
-    """Rs, Rp, Rtot and slowest-branch split of a fitted circuit.
+    r"""Return Rs, Rp, Rtot and the slowest-branch split of a fitted circuit.
 
-    Mirrors ``_resistance_summary`` from the run overview script:
-    R1 = resistance of the slowest branch (largest tau), R_rest = sum of
-    the faster branches, Rp = sum of all branch resistances.
+    Parameters
+    ----------
+    params : CircuitParameters
+        Fitted circuit.
+
+    Returns
+    -------
+    dict of str to float
+        Resistances (Ω, or Ω cm² for area-normalized data) under the keys
+        ``"Rs"`` (source resistance), ``"R1_slowest"`` (branch with the largest
+        :math:`\tau`), ``"R_rest"`` (sum of the other branches), ``"Rp"`` (sum
+        of all branch resistances) and ``"Rtot"`` (``Rs + Rp``).
+
+    Notes
+    -----
+    Mirrors ``_resistance_summary`` from the run overview script. A circuit
+    without branches gives ``R1_slowest = R_rest = Rp = 0``.
     """
     r_s = float(params.resistance_source)
     r_branch = np.asarray(params.resistances, dtype=float)
@@ -46,11 +63,30 @@ def analysis_table(
     out_dir: str | Path,
     report: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Per-file analysis table for a batch output folder.
+    r"""Build the per-file analysis table for a batch output folder.
 
-    Loads every ``fits/<stem>_parameters.json`` listed in the batch report
-    (or discovered on disk) and appends the resistance summary plus
-    per-branch tau / peak frequency columns.
+    Parameters
+    ----------
+    out_dir : str or pathlib.Path
+        Batch output folder written by
+        :func:`~blowing_bubbles.ui.batch.run_batch`.
+    report : pandas.DataFrame, optional
+        Batch report with at least a ``"file"`` column. ``None`` loads
+        ``out_dir/batch_report.csv``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per report row with columns ``file``, ``success``, ``cost``
+        and, when ``fits/<stem>_parameters.json`` exists, the
+        :func:`resistance_summary` keys, ``n_branches``, ``tau_min`` and
+        ``tau_max`` (s) and per-branch resistances ``R_1``, ``R_2``, ... in
+        the stored (increasing-:math:`\tau`) branch order.
+
+    See Also
+    --------
+    resistance_summary
+    series_columns
     """
     out_dir = Path(out_dir)
     if report is None:
@@ -78,7 +114,18 @@ def analysis_table(
 
 
 def max_branches(table: pd.DataFrame) -> int:
-    """Highest branch index present in the table (0 if none)."""
+    """Return the highest branch index ``i`` of an ``R_i`` column (0 if none).
+
+    Parameters
+    ----------
+    table : pandas.DataFrame
+        Table from :func:`analysis_table`.
+
+    Returns
+    -------
+    int
+        Largest ``i`` among columns named ``R_<i>``.
+    """
     n = 0
     for col in table.columns:
         if col.startswith("R_") and col[2:].isdigit():
@@ -89,9 +136,30 @@ def max_branches(table: pd.DataFrame) -> int:
 def series_columns(table: pd.DataFrame, selected: list[int]) -> dict[str, str]:
     """Map plot series labels to table columns for the chosen branch indices.
 
-    Selected branches get their own line (R_1, R_2, ... in tau-sorted
-    order); all unselected branches are summed into R_rest. Rs, Rp and Rtot
-    are always available.
+    Selected branches get their own line (``R_1``, ``R_2``, ... in tau-sorted
+    order); all unselected branches are summed into ``R_rest``.
+
+    Parameters
+    ----------
+    table : pandas.DataFrame
+        Table from :func:`analysis_table`; modified in place (see Notes).
+    selected : list of int
+        1-based branch indices to plot individually. Indices outside
+        ``1..max_branches(table)`` are ignored.
+
+    Returns
+    -------
+    dict of str to str
+        Series label to column name, suitable as ``extra_series`` for
+        :func:`~blowing_bubbles.ui.analysis_plots.resistance_overview_figure`.
+        Contains ``"R_rest"`` (only if some branch is unselected) and one
+        ``"R_i"`` entry per selected branch. ``Rs``, ``Rp`` and ``Rtot`` are not
+        included; they are table columns already.
+
+    Notes
+    -----
+    If any branch is unselected, the column ``"R_rest_selected"`` (row-wise sum
+    of the unselected ``R_i`` columns, NaN treated as 0) is added to ``table``.
     """
     n = max_branches(table)
     selected = [i for i in selected if 1 <= i <= n]
@@ -109,7 +177,25 @@ def series_columns(table: pd.DataFrame, selected: list[int]) -> dict[str, str]:
 def load_spectrum(
     out_dir: str | Path, in_dir: str | Path, name: str, area: float | None = None
 ) -> EISData:
-    """Load the measured spectrum for ``name`` from the batch input folder."""
+    """Load the measured spectrum for ``name`` from the batch input folder.
+
+    Parameters
+    ----------
+    out_dir : str or pathlib.Path
+        Batch output folder (unused; kept for a uniform call signature).
+    in_dir : str or pathlib.Path
+        Batch input folder containing the CSV spectra.
+    name : str
+        CSV file name within ``in_dir``.
+    area : float, optional
+        Electrode area (cm²) to normalize the impedance by on load. ``None``
+        leaves it unnormalized.
+
+    Returns
+    -------
+    EISData
+        The measured spectrum.
+    """
     return EISData.from_csv(str(Path(in_dir) / name), area=area)
 
 
@@ -120,10 +206,33 @@ def difference_spectra(
     reference: str,
     area: float | None = None,
 ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    """Delta Z = Z - Z_ref per selected file.
+    r"""Compute model difference spectra :math:`\Delta Z = Z - Z_\mathrm{ref}`.
 
-    Returns ``{name: (freq, delta_z_complex)}`` with the reference included
-    as zeros. Frequency grids are interpolated onto the reference's grid.
+    Parameters
+    ----------
+    in_dir : str or pathlib.Path
+        Batch input folder; the reference CSV is read only for its frequencies.
+    out_dir : str or pathlib.Path
+        Batch output folder holding ``fits/<stem>_parameters.json``.
+    names : list of str
+        File names to compare against the reference.
+    reference : str
+        File name of the reference spectrum.
+    area : float, optional
+        Electrode area (cm²) passed on when loading the reference CSV.
+
+    Returns
+    -------
+    dict of str to tuple of numpy.ndarray
+        ``{name: (freq, delta_z)}`` with ``freq`` (Hz) the reference's
+        measured frequencies and ``delta_z`` the complex difference (Ω), both
+        of shape ``(M,)``. The reference is included with ``delta_z`` all zeros.
+
+    Notes
+    -----
+    Both :math:`Z` and :math:`Z_\mathrm{ref}` are the *fitted model*
+    impedances (from the saved parameters) evaluated on the reference's
+    frequency grid; no measured data are interpolated or subtracted.
     """
     ref_data = load_spectrum(out_dir, in_dir, reference, area)
     ref_params = batch_mod.load_fit(out_dir, Path(reference).stem)

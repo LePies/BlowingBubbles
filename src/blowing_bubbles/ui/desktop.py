@@ -1,8 +1,11 @@
-r"""Desktop entry point: Streamlit UI inside a native pywebview window.
+r"""Run the Streamlit UI inside a native pywebview window (desktop entry point).
 
-Runs the Streamlit server in-process on a random free localhost port (a
-daemon thread via ``streamlit.web.bootstrap.run``), then opens a pywebview
-window pointed at it (Edge WebView2 on Windows). Packaged with PyInstaller
+:func:`main` picks a free localhost port (:func:`free_port`), runs the
+Streamlit server for ``app.py`` in-process on a daemon thread via
+``streamlit.web.bootstrap.run`` (:func:`start_streamlit_inprocess`), polls its
+``/healthz`` endpoint for up to 30 s (:func:`wait_for_server`), then opens a
+1280x850 pywebview window titled "BlowingBubbles" pointed at it (Edge WebView2
+on Windows) and blocks until the window is closed. Packaged with PyInstaller
 via ``desktop.spec``::
 
     uv sync --group desktop
@@ -29,7 +32,9 @@ def _app_path() -> Path:
 
     Onefile builds extract to ``sys._MEIPASS``; onedir builds use
     ``_internal/`` next to the launcher (exposed as ``sys._MEIPASS`` too in
-    PyInstaller >= 6).
+    PyInstaller >= 6). Candidates are ``_MEIPASS/app.py``,
+    ``_MEIPASS/_internal/app.py`` and the source path; the first existing one is
+    returned, else the source path.
     """
     frozen_dir = getattr(sys, "_MEIPASS", None)
     candidates = []
@@ -50,7 +55,15 @@ START_ERROR: list[str] = []
 
 
 def free_port() -> int:
-    """Pick an unused TCP port on localhost."""
+    """Pick an unused TCP port on localhost.
+
+    Returns
+    -------
+    int
+        Port number the OS assigned to a temporary socket bound to
+        ``127.0.0.1``. The socket is closed before returning, so another
+        process could in principle take the port before it is reused.
+    """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
@@ -59,11 +72,30 @@ def free_port() -> int:
 def start_streamlit_inprocess(port: int) -> threading.Thread:
     """Start the Streamlit server for ``app.py`` on a daemon thread.
 
-    ``bootstrap.run`` installs signal handlers, which only works in the main
-    thread — so when called from a non-main thread (tests, embedded hosts)
-    we neutralize ``signal.signal`` for the duration of the call. In the
-    packaged desktop app this function is invoked from ``main()`` (the main
-    thread), where the patch is skipped.
+    Parameters
+    ----------
+    port : int
+        Localhost port the server binds to (address ``127.0.0.1``).
+
+    Returns
+    -------
+    threading.Thread
+        The started daemon thread, named ``"streamlit-server"``.
+
+    Notes
+    -----
+    Streamlit's config is re-parsed via ``load_config_options`` with headless
+    mode, development mode off, usage statistics off and the given port and
+    address, and the same options are passed to ``bootstrap.run``.
+
+    ``bootstrap.run`` installs signal handlers, which Python only allows in the
+    main thread. The server always runs on the new daemon thread, so
+    ``signal.signal`` is replaced by a no-op (process-wide) for the duration of
+    the call and restored afterwards.
+
+    Any exception raised by the server thread is not propagated; its traceback
+    is appended to the module-level ``START_ERROR`` list, which :func:`main`
+    reports if the server does not come up.
     """
     from streamlit.web import bootstrap  # noqa: PLC0415 — lazy import
 
@@ -92,6 +124,7 @@ def start_streamlit_inprocess(port: int) -> threading.Thread:
     }
 
     def _run() -> None:
+        """Run ``bootstrap.run``; record any exception in ``START_ERROR``."""
         import signal
         import traceback
 
@@ -118,7 +151,25 @@ def start_streamlit_inprocess(port: int) -> threading.Thread:
 
 
 def wait_for_server(port: int, timeout: float = 30.0) -> bool:
-    """Block until the Streamlit server answers on ``port``."""
+    """Block until the Streamlit server answers on ``port``.
+
+    Parameters
+    ----------
+    port : int
+        Localhost port of the server.
+    timeout : float, default 30.0
+        Maximum waiting time (s).
+
+    Returns
+    -------
+    bool
+        ``True`` once ``http://127.0.0.1:<port>/healthz`` responds, ``False``
+        if it did not within ``timeout``.
+
+    Notes
+    -----
+    Polls every 0.25 s after a failed request (each request has a 2 s timeout).
+    """
     import urllib.request
 
     deadline = time.monotonic() + timeout
@@ -133,6 +184,21 @@ def wait_for_server(port: int, timeout: float = 30.0) -> bool:
 
 
 def main() -> None:
+    """Launch the desktop app: start the server, then open the pywebview window.
+
+    Raises
+    ------
+    RuntimeError
+        If the Streamlit server does not answer within 30 s; the message
+        includes the server thread's traceback when one was recorded in
+        ``START_ERROR``.
+
+    Notes
+    -----
+    Imports pywebview lazily (requires the WebView2 runtime on Windows) and
+    blocks in ``webview.start()`` until the window is closed. The server runs on
+    a daemon thread, so it stops when the process exits.
+    """
     import webview  # noqa: PLC0415 — lazy: needs WebView2 runtime at run time
 
     port = free_port()
