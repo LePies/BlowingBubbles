@@ -22,14 +22,14 @@ def _data(freq, **p):
     ), z
 
 
-ONE_ARC = dict(
-    resistance_source=1.0,
-    inductance=0.0,
-    inductance_exponent=1.0,
-    resistances=np.array([10.0]),
-    capacitances=np.array([1e-3]),
-    exponents=np.array([1.0]),
-)
+ONE_ARC = {
+    "resistance_source": 1.0,
+    "inductance": 0.0,
+    "inductance_exponent": 1.0,
+    "resistances": np.array([10.0]),
+    "capacitances": np.array([1e-3]),
+    "exponents": np.array([1.0]),
+}
 
 
 def test_initial_tau_includes_two_pi():
@@ -52,15 +52,15 @@ def test_initial_rs_independent_of_row_order(order):
 def test_truncated_arc_truth_is_feasible():
     """True circuit with a high-frequency arc beyond f_max must satisfy constraints."""
     freq = np.logspace(5, -2, 100)
-    p = dict(
-        resistance_source=0.3,
-        inductance=1e-8,
-        inductance_exponent=1.0,
-        resistances=np.array([0.3, 0.2]),
-        capacitances=np.array([1e-5 / 0.3, 1e-1 / 0.2]),
-        exponents=np.array([0.75, 0.95]),
-    )
-    data, z = _data(freq, **p)
+    p = {
+        "resistance_source": 0.3,
+        "inductance": 1e-8,
+        "inductance_exponent": 1.0,
+        "resistances": np.array([0.3, 0.2]),
+        "capacitances": np.array([1e-5 / 0.3, 1e-1 / 0.2]),
+        "exponents": np.array([0.75, 0.95]),
+    }
+    _, z = _data(freq, **p)
     assert z.real.min() > p["resistance_source"] + 0.5 * 0.3 * 0  # sanity
     vec = np.array([p["resistance_source"], p["inductance"], 1.0, *p["resistances"]])
     assert _constraints_satisfied(vec, slice(3, 5), z.real.min(), z.real.max(), 1e-12)
@@ -69,14 +69,14 @@ def test_truncated_arc_truth_is_feasible():
 def test_truth_start_is_fixed_point_on_clean_data():
     """Started at the truth, a clean-data fit must stay there (v0.1 moved away)."""
     freq = np.logspace(5, -2, 100)
-    p = dict(
-        resistance_source=0.3,
-        inductance=1e-8,
-        inductance_exponent=1.0,
-        resistances=np.array([0.3, 0.2]),
-        capacitances=np.array([1e-5 / 0.3, 1e-1 / 0.2]),
-        exponents=np.array([0.75, 0.95]),
-    )
+    p = {
+        "resistance_source": 0.3,
+        "inductance": 1e-8,
+        "inductance_exponent": 1.0,
+        "resistances": np.array([0.3, 0.2]),
+        "capacitances": np.array([1e-5 / 0.3, 1e-1 / 0.2]),
+        "exponents": np.array([0.75, 0.95]),
+    }
     data, _ = _data(freq, **p)
     truth = CircuitParameters(**p)
     res = impendance_fit(

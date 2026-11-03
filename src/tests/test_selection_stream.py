@@ -1,5 +1,7 @@
 """Tests for model selection in iterative branch building (``fit_circuit``)."""
 
+import itertools
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -10,13 +12,19 @@ from blowing_bubbles.scripts.fit_circuit import fit_circuit, information_criteri
 
 FREQ = np.logspace(-2, 5, 60)
 TWO_ARC = CircuitParameters(
-    10.0, 0.0, 1.0,
-    np.array([20.0, 50.0]), np.array([1e-5, 1e-2]), np.array([0.9, 0.85]),
+    10.0,
+    0.0,
+    1.0,
+    np.array([20.0, 50.0]),
+    np.array([1e-5, 1e-2]),
+    np.array([0.9, 0.85]),
 )
 # Three arcs with tau = 1e-6, 3e-3 and 6 s (3+ decades apart) inside the
 # measured window 1e-2 .. 1e6 Hz.
 THREE_ARC = CircuitParameters(
-    5.0, 0.0, 1.0,
+    5.0,
+    0.0,
+    1.0,
     np.array([10.0, 30.0, 60.0]),
     np.array([1e-7, 1e-4, 1e-1]),
     np.array([0.95, 0.9, 0.9]),
@@ -28,8 +36,9 @@ def _data(params, freq, noise=0.0, seed=0):
     z = params.get_impedance(freq)
     if noise:
         rng = np.random.default_rng(seed)
-        z = z * (1 + noise * (rng.normal(size=freq.size)
-                              + 1j * rng.normal(size=freq.size)))
+        z = z * (
+            1 + noise * (rng.normal(size=freq.size) + 1j * rng.normal(size=freq.size))
+        )
     return EISData(pd.DataFrame({"freq": freq, "real": z.real, "imag": z.imag}))
 
 
@@ -59,7 +68,7 @@ def test_bic_finds_three_arcs_in_noisy_data(noise_seed):
     accepted = [h for h in res.history if h["accepted"]]
     assert accepted[-1]["n_groups"] == 3
     # BIC decreased for every accepted step and rose for the rejected 4th branch.
-    assert all(b1 < b0 for b0, b1 in zip(bics[:-2], bics[1:-1], strict=True))
+    assert all(b1 < b0 for b0, b1 in itertools.pairwise(bics[:-1]))
     assert bics[-1] > bics[-2]
 
 

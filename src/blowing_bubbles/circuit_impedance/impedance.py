@@ -260,7 +260,7 @@ def circuit_impedance_parameter_gradient(
         resistances,
         capacitances,
         exponents,
-        isfloat,
+        _isfloat,
     ) = circuit_assert_arguments(
         freq,
         resistance_source,

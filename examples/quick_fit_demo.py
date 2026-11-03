@@ -180,15 +180,15 @@ def calc_param_error(params1, params2):
         abs(params1.resistance_source - params2.resistance_source)
         / params2.resistance_source
     )
-    r_err = np.sum(
-        np.abs(params1.resistances - params2.resistances)
-    ) / np.sum(params2.resistances)
-    c_err = np.sum(
-        np.abs(params1.capacitances - params2.capacitances)
-    ) / np.sum(params2.capacitances)
-    exp_err = np.sum(
-        np.abs(params1.exponents - params2.exponents)
-    ) / len(params2.exponents)
+    r_err = np.sum(np.abs(params1.resistances - params2.resistances)) / np.sum(
+        params2.resistances
+    )
+    c_err = np.sum(np.abs(params1.capacitances - params2.capacitances)) / np.sum(
+        params2.capacitances
+    )
+    exp_err = np.sum(np.abs(params1.exponents - params2.exponents)) / len(
+        params2.exponents
+    )
     return rs_err * 100, r_err * 100, c_err * 100, exp_err * 100
 
 
