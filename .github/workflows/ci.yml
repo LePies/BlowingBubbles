@@ -37,5 +37,26 @@ jobs:
       - name: Check dependencies with deptry
         run: uv run deptry .
 
-      - name: Run tests with pytest
-        run: uv run pytest -q
+      - name: Run tests with coverage
+        run: uv run pytest -q --cov=blowing_bubbles --cov-report=xml --cov-report=term
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          flags: unittests
+
+  ui-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dev + ui dependencies
+        run: uv sync --frozen --no-default-groups --group dev --group ui
+
+      - name: Run UI tests
+        run: uv run pytest -q src/tests/test_ui_smoke.py src/tests/test_ui_batch.py src/tests/test_ui_desktop.py

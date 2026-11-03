@@ -26,6 +26,7 @@ build-backend = "uv_build"
 dev = [
     "deptry>=0.20",
     "pytest>=9.2.0",
+    "pytest-cov>=7.0.0",
     "ruff>=0.15.14",
     "ty>=0.0.38",
 ]
@@ -50,6 +51,14 @@ default-groups = ["dev", "docs"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["src/tests"]
+
+[tool.coverage.run]
+source = ["blowing_bubbles"]
+omit = ["src/blowing_bubbles/ui/*", "src/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
 
 [tool.deptry]
 known_first_party = ["blowing_bubbles"]
