@@ -67,18 +67,6 @@ a bootstrapper is available for Windows 10).
 Add new ``examples/your_example.py`` files with a module docstring (title underlined
 with ``=``). For matplotlib figures, use filenames like ``plot_demo.py``.
 
-Package icon
-------------
-
-To show a logo in the sidebar, copy an image (``.png``, ``.jpg``, or ``.svg``) to
-:file:`docs/_static/` and point ``html_logo`` (and optionally ``html_favicon``) at it
-in :file:`docs/conf.py`:
-
-.. code-block:: python
-
-   html_logo = "_static/package_icon.png"
-   html_favicon = "_static/package_icon.png"
-
 Using the package
 -----------------
 
@@ -102,8 +90,8 @@ The documentation is built with Sphinx. From the project root:
    uv sync
    uv run ruff check .
    uv run ty check
-   uv run sphinx-build -W -b html docs docs/_build
+   uv run sphinx-build -W -b html docs/source docs/build/html
 
-Open :file:`docs/_build/index.html` in a browser.
+Open :file:`docs/build/html/index.html` in a browser.
 
 Alternatively, from :file:`docs/` run ``make html`` (or ``make.bat`` on Windows).

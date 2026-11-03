@@ -16,7 +16,7 @@ wheels/
 .pytest_cache/
 .coverage
 coverage.xml
-docs/_build/
+docs/build/
 __pycache__/
 *.py[cod]
 *$py.class

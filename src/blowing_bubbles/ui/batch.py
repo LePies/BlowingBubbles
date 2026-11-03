@@ -65,7 +65,7 @@ def run_batch(
         :meth:`~blowing_bubbles.classes.data_classes.EISData.quick_fit`
         (these keyword arguments plus the coarse parameters as
         ``initial_parameters``). ``None`` skips refinement.
-    pattern : str, default "*.csv"
+    pattern : str, default ``"*.csv"``
         Glob pattern for spectrum files in ``input_dir``.
     area : float, optional
         Electrode area in cm². If given, every spectrum is normalized to

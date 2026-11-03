@@ -6,7 +6,7 @@ Each ``.py`` file becomes a gallery page under ``docs/auto_examples/``.
 ## Add an example
 
 1. Create ``examples/my_example.py`` with a module docstring (title + description).
-2. Build docs: ``uv run sphinx-build -W -b html docs docs/_build``.
+2. Build docs: ``uv run sphinx-build -W -b html docs/source docs/build/html``.
 
 ## Run locally without building docs
 

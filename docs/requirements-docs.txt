@@ -1,5 +1,0 @@
-# Sphinx and extensions (mirrors [dependency-groups] docs in pyproject.toml)
-sphinx>=7.0,<9
-furo>=2024.1
-sphinxcontrib-bibtex>=2.6
-sphinx-gallery>=0.16
