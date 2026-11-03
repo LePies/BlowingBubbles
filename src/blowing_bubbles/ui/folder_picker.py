@@ -15,7 +15,7 @@ from pathlib import Path
 def _pick_with_pywebview() -> str | None:
     """Return a folder from pywebview's dialog; ``None`` if no window or cancel."""
     try:
-        import webview  # noqa: PLC0415
+        import webview
     except ImportError:
         return None
     windows = webview.windows
@@ -39,8 +39,8 @@ def _pick_with_pywebview() -> str | None:
 def _pick_with_tkinter() -> str | None:
     """Return a folder from a hidden-root tkinter dialog; ``None`` on failure."""
     try:
-        import tkinter  # noqa: PLC0415
-        from tkinter import filedialog  # noqa: PLC0415
+        import tkinter
+        from tkinter import filedialog
     except ImportError:
         return None
     try:

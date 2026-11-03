@@ -16,7 +16,7 @@ import numpy as np
 
 from blowing_bubbles.classes.circuit_classes import FitResults
 from blowing_bubbles.classes.data_classes import EISData
-from blowing_bubbles.scripts.global_minimize import (  # noqa: F401 (re-export)
+from blowing_bubbles.scripts.global_minimize import (
     _resolve_n_jobs,
     impendance_fit,
     initial_fit,
@@ -35,7 +35,7 @@ def _segment_boundaries_at_local_minima(y: np.ndarray) -> list[int]:
     if n < 2:
         return [0, n]
     mins = [i for i in range(1, n - 1) if y[i] <= y[i - 1] and y[i] <= y[i + 1]]
-    return [0] + mins + [n]
+    return [0, *mins, n]
 
 
 def segment_magnitude_integrals(
@@ -144,9 +144,7 @@ def _validate_selection(selection: str | None, min_improvement: float) -> None:
             f"Unknown selection {selection!r}; use None, 'bic', 'aic' or 'kk'."
         )
     if not (0.0 <= min_improvement < 1.0):
-        raise ValueError(
-            f"min_improvement must be in [0, 1), got {min_improvement!r}."
-        )
+        raise ValueError(f"min_improvement must be in [0, 1), got {min_improvement!r}.")
 
 
 def _residual_weights(data: EISData, weighting: str) -> np.ndarray:
@@ -479,7 +477,7 @@ def _fit_circuit_impl(
 
     def _entry(fit: FitResults, value: float | None, accepted: bool) -> dict:
         """Return the ``history`` record for one branch count."""
-        entry = {
+        entry: dict[str, int | float | None] = {
             "n_groups": int(fit.n_groups),
             "cost": float(fit.cost),
             "accepted": accepted,
@@ -566,15 +564,18 @@ def _fit_circuit_impl(
         crit_new, adequate_new = _criterion(res_new)
         # With min_improvement = 0 this is the plain "cost decreased" test.
         cost_ok = res_new.cost < res.cost * (1.0 - min_improvement)
-        crit_ok = selection not in ("bic", "aic") or crit_new < crit
+        crit_ok = selection not in ("bic", "aic") or (
+            crit is not None and crit_new is not None and crit_new < crit
+        )
         accepted = bool(cost_ok and crit_ok)
         history.append(_entry(res_new, crit_new, accepted))
         if not accepted:
             if verbose:
+                sel = selection.upper() if selection is not None else "criterion"
                 reason = (
                     "did not lower the cost enough"
                     if not cost_ok
-                    else f"did not lower the {selection.upper()}"
+                    else f"did not lower the {sel}"
                 )
                 print(
                     f"   Adding branch {branch_count + 1} {reason}; "

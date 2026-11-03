@@ -47,7 +47,11 @@ def test_redundant_branch_keeps_positive_r_and_finite_c():
     eis = _eis(p.get_impedance(FREQ))
     for bounds in (None, (0.0, 1e3)):
         res = impedance_fit(
-            eis, n_groups=3, complex_fit=False, n_restarts=4, seed=0,
+            eis,
+            n_groups=3,
+            complex_fit=False,
+            n_restarts=4,
+            seed=0,
             resistance_branch_bounds=bounds,
         )
         assert np.all(res.parameters.resistances > 0)
@@ -69,15 +73,21 @@ def _layout(complex_fit, n):
 
 def test_perturb_preserves_negative_inductance():
     n = 2
-    head, n_params, lower, upper = _layout(False, n)
+    _head, n_params, lower, upper = _layout(False, n)
     lower[1], upper[1] = -1e-5, 0.0
     base = np.ones(n_params)
     base[1] = -2e-6
     rng = np.random.default_rng(0)
     inits = [
         _perturb_init(
-            base, rng, 0.5, lower, upper,
-            complex_fit=False, n_groups=n, local_exponents=False,
+            base,
+            rng,
+            0.5,
+            lower,
+            upper,
+            complex_fit=False,
+            n_groups=n,
+            local_exponents=False,
         )
         for _ in range(50)
     ]
@@ -95,8 +105,13 @@ def test_negative_inductance_fit_through_impedance_fit():
     start = IDEAL.copy()
     start.inductance = -5e-4
     res = impedance_fit(
-        eis, n_groups=2, complex_fit=False, initial_parameters=start,
-        n_restarts=4, seed=0, inductance_bounds=True,
+        eis,
+        n_groups=2,
+        complex_fit=False,
+        initial_parameters=start,
+        n_restarts=4,
+        seed=0,
+        inductance_bounds=True,
     )
     assert res.parameters.inductance == pytest.approx(-1e-3, rel=1e-4)
 
@@ -114,13 +129,21 @@ def test_perturb_exponents_respect_user_bounds(local):
 
     def draw(seed):
         rng = np.random.default_rng(seed)
-        return np.array([
-            _perturb_init(
-                base, rng, 0.5, lower, upper,
-                complex_fit=True, n_groups=n, local_exponents=local,
-            )
-            for _ in range(40)
-        ])
+        return np.array(
+            [
+                _perturb_init(
+                    base,
+                    rng,
+                    0.5,
+                    lower,
+                    upper,
+                    complex_fit=True,
+                    n_groups=n,
+                    local_exponents=local,
+                )
+                for _ in range(40)
+            ]
+        )
 
     inits = draw(3)
     exps = np.concatenate([inits[:, 2], inits[:, e_slice].ravel()])
@@ -133,13 +156,22 @@ def test_perturb_exponents_respect_user_bounds(local):
 
 def test_restarts_with_exponent_bounds_stay_inside():
     p = CircuitParameters(
-        10.0, 0.0, 1.0, np.array([20.0, 50.0]), np.array([1e-5, 1e-2]),
+        10.0,
+        0.0,
+        1.0,
+        np.array([20.0, 50.0]),
+        np.array([1e-5, 1e-2]),
         np.array([0.9, 0.85]),
     )
     eis = _eis(p.get_impedance(FREQ))
     res = impedance_fit(
-        eis, n_groups=2, complex_fit=True, initial_parameters=p,
-        n_restarts=4, seed=0, exponent_bounds=(0.8, 0.95),
+        eis,
+        n_groups=2,
+        complex_fit=True,
+        initial_parameters=p,
+        n_restarts=4,
+        seed=0,
+        exponent_bounds=(0.8, 0.95),
     )
     e = np.append(res.parameters.exponents, res.parameters.inductance_exponent)
     assert np.all((e >= 0.8) & (e <= 0.95))
@@ -165,8 +197,12 @@ def test_standard_errors_match_monte_carlo():
         noise = rng.normal(size=z0.size) + 1j * rng.normal(size=z0.size)
         eis = _eis(z0 + sigma * np.abs(z0) * noise)
         res = impedance_fit(
-            eis, n_groups=2, complex_fit=False, initial_parameters=IDEAL,
-            n_restarts=1, seed=k,
+            eis,
+            n_groups=2,
+            complex_fit=False,
+            initial_parameters=IDEAL,
+            n_restarts=1,
+            seed=k,
         )
         est.append(res.parameters.to_array())
         se.append(res.standard_errors)
@@ -204,16 +240,18 @@ def test_covariance_shape_symmetry_and_fixed_parameters():
 
 def test_complex_fit_covariance_is_symmetric_psd():
     p = CircuitParameters(
-        10.0, 1e-6, 0.9, np.array([20.0, 50.0]), np.array([1e-5, 1e-2]),
+        10.0,
+        1e-6,
+        0.9,
+        np.array([20.0, 50.0]),
+        np.array([1e-5, 1e-2]),
         np.array([0.9, 0.85]),
     )
     z0 = p.get_impedance(FREQ)
     rng = np.random.default_rng(2)
     noise = rng.normal(size=z0.size) + 1j * rng.normal(size=z0.size)
     eis = _eis(z0 + 0.01 * np.abs(z0) * noise)
-    res = impedance_fit(
-        eis, n_groups=2, complex_fit=True, initial_parameters=p, seed=0
-    )
+    res = impedance_fit(eis, n_groups=2, complex_fit=True, initial_parameters=p, seed=0)
     cov = res.covariance
     np.testing.assert_allclose(cov, cov.T)
     assert np.linalg.eigvalsh(cov).min() >= -1e-9 * np.abs(cov).max()
@@ -227,14 +265,22 @@ def test_fit_results_permutes_covariance_to_tau_order():
     x = np.array([1.0, 0.0, 1.0, 2.0, 3.0, 1.0, 1e-3, 0.9, 0.8])
     #             Rs   L    nL   R1   R2   C1   C2    e1   e2  (tau1 > tau2)
     res_ls = OptimizeResult(
-        x=x, fun=np.zeros(4), cost=0.0, success=True, status=1, message="",
-        nfev=1, njev=1, jac=None, grad=None, optimality=None, active_mask=None,
+        x=x,
+        fun=np.zeros(4),
+        cost=0.0,
+        success=True,
+        status=1,
+        message="",
+        nfev=1,
+        njev=1,
+        jac=None,
+        grad=None,
+        optimality=None,
+        active_mask=None,
     )
     cov = np.diag(np.arange(1.0, 10.0))
     fr = FitResults(res_ls, n, True, covariance=cov)
     np.testing.assert_allclose(fr.parameters.resistances, [3.0, 2.0])
-    np.testing.assert_allclose(
-        fr.standard_errors ** 2, [1, 2, 3, 5, 4, 7, 6, 9, 8]
-    )
+    np.testing.assert_allclose(fr.standard_errors**2, [1, 2, 3, 5, 4, 7, 6, 9, 8])
     # Backward compatible: no covariance -> attributes are None.
     assert FitResults(res_ls, n, True).covariance is None

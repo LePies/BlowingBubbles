@@ -1,0 +1,4 @@
+[src]
+include = ["src/blowing_bubbles", "examples"]
+# Tests and the Streamlit UI are not type-checked yet; tracked for follow-up.
+exclude = ["docs/**", "src/tests/**", "src/blowing_bubbles/ui/**"]

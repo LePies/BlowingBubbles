@@ -14,8 +14,12 @@ from blowing_bubbles.scripts.global_minimize import impendance_fit, initial_fit
 
 FREQ = np.logspace(-2, 5, 60)
 TRUTH = CircuitParameters(
-    10.0, 0.0, 1.0,
-    np.array([20.0, 50.0]), np.array([1e-5, 1e-2]), np.array([0.9, 0.85]),
+    10.0,
+    0.0,
+    1.0,
+    np.array([20.0, 50.0]),
+    np.array([1e-5, 1e-2]),
+    np.array([0.9, 0.85]),
 )
 
 
@@ -98,8 +102,12 @@ def test_complex_fit_false_converges_on_ideal_circuit():
     start = ideal.copy()
     start.resistances = start.resistances * 1.3
     res = impendance_fit(
-        eis, n_groups=2, complex_fit=False, initial_parameters=start,
-        n_restarts=3, seed=0,
+        eis,
+        n_groups=2,
+        complex_fit=False,
+        initial_parameters=start,
+        n_restarts=3,
+        seed=0,
     )
     np.testing.assert_allclose(res.parameters.resistances, [20.0, 50.0], rtol=1e-4)
     np.testing.assert_allclose(res.parameters.exponents, [1.0, 1.0])
@@ -159,10 +167,21 @@ def test_fit_problem_jacobian_matches_finite_differences(complex_fit):
     n_params = head + (2 + complex_fit) * n
     z = TRUTH.get_impedance(FREQ)
     prob = _FitProblem(
-        FREQ, z, 1 / np.abs(z), complex_fit=complex_fit, n_groups=n,
-        z_min=-1.0, z_max=1.0, margin=0.0, margin_weight=1.0,
-        lower=np.zeros(n_params), upper=np.full(n_params, np.inf),
-        tau_bounds=None, max_nfev=100, polish=False, polish_maxiter=1,
+        FREQ,
+        z,
+        1 / np.abs(z),
+        complex_fit=complex_fit,
+        n_groups=n,
+        z_min=-1.0,
+        z_max=1.0,
+        margin=0.0,
+        margin_weight=1.0,
+        lower=np.zeros(n_params),
+        upper=np.full(n_params, np.inf),
+        tau_bounds=None,
+        max_nfev=100,
+        polish=False,
+        polish_maxiter=1,
         constraint_tol=1e-9,
     )
     p = rng.uniform(0.5, 1.0, n_params)
@@ -182,7 +201,12 @@ def test_fit_problem_jacobian_matches_finite_differences(complex_fit):
 
 def test_parallel_restarts_match_sequential():
     eis = EISData(_frame(("freq", "real", "imag")))
-    kwargs = dict(n_groups=2, complex_fit=True, initial_parameters=TRUTH, seed=1)
+    kwargs = {
+        "n_groups": 2,
+        "complex_fit": True,
+        "initial_parameters": TRUTH,
+        "seed": 1,
+    }
     seq = impendance_fit(eis, n_restarts=4, n_jobs=1, **kwargs)
     par = impendance_fit(eis, n_restarts=4, n_jobs=2, **kwargs)
     np.testing.assert_array_equal(seq.parameters.to_array(), par.parameters.to_array())
@@ -191,8 +215,13 @@ def test_parallel_restarts_match_sequential():
 def test_early_stop_runs_fewer_restarts():
     eis = EISData(_frame(("freq", "real", "imag")))
     res = impendance_fit(
-        eis, n_groups=2, complex_fit=True, initial_parameters=TRUTH,
-        n_restarts=50, seed=1, early_stop=3,
+        eis,
+        n_groups=2,
+        complex_fit=True,
+        initial_parameters=TRUTH,
+        n_restarts=50,
+        seed=1,
+        early_stop=3,
     )
     assert "of 50 restarts" in res.message
     assert not res.message.startswith("hybrid TRF (50 of")
