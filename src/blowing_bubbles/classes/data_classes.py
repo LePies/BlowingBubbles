@@ -96,15 +96,15 @@ class EISData:
     """
 
     def __init__(
-            self,
-            data_set: pd.DataFrame,
-            area: float | None = None,
-            unit: str = "Ohm",
-            columns: tuple[str, str, str] | None = None,
-            *,
-            _validate: bool = True,
-            _warn_stacklevel: int = 3,
-        ) -> None:
+        self,
+        data_set: pd.DataFrame,
+        area: float | None = None,
+        unit: str = "Ohm",
+        columns: tuple[str, str, str] | None = None,
+        *,
+        _validate: bool = True,
+        _warn_stacklevel: int = 3,
+    ) -> None:
         """Validate the spectrum and derive the cached arrays and resistances."""
         self.data = data_set
         self.keys = tuple(columns) if columns is not None else self.find_keys()
@@ -344,7 +344,7 @@ class EISData:
             "imag": ({"i", "im", "imag", "imaginary", "zim", "zimag"}, "imag"),
         }
         matches: dict[str, list[str]] = {name: [] for name in categories}
-        for key in self.data.keys():
+        for key in self.data:
             tokens = [t for t in re.split(r"[^a-z]+", str(key).lower()) if t]
             for name, (exact, prefix) in categories.items():
                 if any(t in exact or t.startswith(prefix) for t in tokens):
@@ -547,7 +547,6 @@ class EISData:
         kwargs.setdefault("linestyle", "")
         kwargs.setdefault("color", "black")
         kwargs.setdefault("markerfacecolor", "none")
-   
 
         axes.plot(self.Real, -self.Imag, **kwargs)
         axes.set_xlabel(r"Z' [" + self.unit + "]")
@@ -782,29 +781,29 @@ class EISData:
         """
 
         return quick_fit(
-            data = self,
-            n_restarts = 1,
-            initial_parameters = initial_parameters,
-            n_groups = len(initial_parameters.resistances),
-            complex_fit = complex_fit,
-            seed = seed,
-            sigma = sigma,
-            tau_bounds = tau_bounds,
-            penalty_margin_weight = penalty_margin_weight,
-            penalty_weight = penalty_weight,
-            z_margin_frac = z_margin_frac,
-            z_margin_abs = z_margin_abs,
-            max_nfev = max_nfev,
-            polish = polish,
-            polish_maxiter = polish_maxiter,
-            constraint_tol = constraint_tol,
-            inductance_bounds = inductance_bounds,
-            inductance_margin = inductance_margin,
-            resistance_source_bounds = resistance_source_bounds,
-            resistance_branch_bounds = resistance_branch_bounds,
-            exponent_bounds = exponent_bounds,
-            inductance_exponent_bounds = inductance_exponent_bounds,
-            weighting = weighting,
+            data=self,
+            n_restarts=1,
+            initial_parameters=initial_parameters,
+            n_groups=len(initial_parameters.resistances),
+            complex_fit=complex_fit,
+            seed=seed,
+            sigma=sigma,
+            tau_bounds=tau_bounds,
+            penalty_margin_weight=penalty_margin_weight,
+            penalty_weight=penalty_weight,
+            z_margin_frac=z_margin_frac,
+            z_margin_abs=z_margin_abs,
+            max_nfev=max_nfev,
+            polish=polish,
+            polish_maxiter=polish_maxiter,
+            constraint_tol=constraint_tol,
+            inductance_bounds=inductance_bounds,
+            inductance_margin=inductance_margin,
+            resistance_source_bounds=resistance_source_bounds,
+            resistance_branch_bounds=resistance_branch_bounds,
+            exponent_bounds=exponent_bounds,
+            inductance_exponent_bounds=inductance_exponent_bounds,
+            weighting=weighting,
         )
 
 
@@ -1011,27 +1010,27 @@ def quick_fit(
     from blowing_bubbles.scripts.global_minimize import impendance_fit as _run_quick_fit
 
     return _run_quick_fit(
-        data = data,
-        n_groups = n_groups,
-        complex_fit = complex_fit,
-        initial_parameters = initial_parameters,
-        n_restarts = n_restarts,
-        seed = seed,
-        sigma = sigma,
-        tau_bounds = tau_bounds,
-        penalty_margin_weight = penalty_margin_weight,
-        penalty_weight = penalty_weight,
-        z_margin_frac = z_margin_frac,
-        z_margin_abs = z_margin_abs,
-        max_nfev = max_nfev,
-        polish = polish,
-        polish_maxiter = polish_maxiter,
-        constraint_tol = constraint_tol,
-        inductance_bounds = inductance_bounds,
-        inductance_margin = inductance_margin,
-        resistance_source_bounds = resistance_source_bounds,
-        resistance_branch_bounds = resistance_branch_bounds,
-        exponent_bounds = exponent_bounds,
-        inductance_exponent_bounds = inductance_exponent_bounds,
-        weighting = weighting,
+        data=data,
+        n_groups=n_groups,
+        complex_fit=complex_fit,
+        initial_parameters=initial_parameters,
+        n_restarts=n_restarts,
+        seed=seed,
+        sigma=sigma,
+        tau_bounds=tau_bounds,
+        penalty_margin_weight=penalty_margin_weight,
+        penalty_weight=penalty_weight,
+        z_margin_frac=z_margin_frac,
+        z_margin_abs=z_margin_abs,
+        max_nfev=max_nfev,
+        polish=polish,
+        polish_maxiter=polish_maxiter,
+        constraint_tol=constraint_tol,
+        inductance_bounds=inductance_bounds,
+        inductance_margin=inductance_margin,
+        resistance_source_bounds=resistance_source_bounds,
+        resistance_branch_bounds=resistance_branch_bounds,
+        exponent_bounds=exponent_bounds,
+        inductance_exponent_bounds=inductance_exponent_bounds,
+        weighting=weighting,
     )

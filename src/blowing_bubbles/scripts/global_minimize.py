@@ -115,7 +115,7 @@ def initial_fit(
     mountain_center_freqs = []
 
     # Indexes bracketing each peak region
-    all_bounds = [0] + valleys + [len(eis.Real) - 1]
+    all_bounds = [0, *valleys, len(eis.Real) - 1]
 
     for i in range(len(peaks)):
         # Peak i lies between all_bounds[i] and all_bounds[i + 1]
@@ -189,7 +189,10 @@ def tau_bounds_from_frequencies(freq: np.ndarray) -> tuple[float, float]:
     if f_pos.size == 0:
         raise ValueError("Need at least one positive frequency for tau bounds.")
     two_pi = 2.0 * np.pi
-    return (1.0 / (two_pi * float(np.max(f_pos))), 1.0 / (two_pi * float(np.min(f_pos))))
+    return (
+        1.0 / (two_pi * float(np.max(f_pos))),
+        1.0 / (two_pi * float(np.min(f_pos))),
+    )
 
 
 _INDUCTANCE_EST_TOL = 1e-15
@@ -403,9 +406,7 @@ def _perturb_init(
         if local_exponents:
             # Stay near the base exponents (refinement around a seed).
             init[2] = base[2] + rng.normal(scale=0.5 * sigma)
-            init[e_slice] = base[e_slice] + rng.normal(
-                scale=0.5 * sigma, size=n_groups
-            )
+            init[e_slice] = base[e_slice] + rng.normal(scale=0.5 * sigma, size=n_groups)
         else:
             # Global exploration of the exponents within their bounds.
             init[2] = rng.uniform(lower[2], upper[2])
@@ -604,6 +605,7 @@ class _FitProblem:
             Z = p[0] + p[1] * s_l + np.sum(R / D, axis=1)
             self._key = key
             self._state = (R, tau, s_l, S, D, Z)
+        assert self._state is not None
         return self._state
 
     def model(self, p: np.ndarray) -> np.ndarray:
@@ -620,7 +622,7 @@ class _FitProblem:
 
         Shape ``(2 * n_freq + 2,)``.
         """
-        p =np.asarray(p, dtype=float)
+        p = np.asarray(p, dtype=float)
         diff = self._forward(p)[-1] - self.z
         m = self.m
         out = np.empty(2 * m + 2)
@@ -636,7 +638,7 @@ class _FitProblem:
 
         Shape ``(2 * n_freq + 2, n_params)``.
         """
-        p =np.asarray(p, dtype=float)
+        p = np.asarray(p, dtype=float)
         R, tau, s_l, S, D, _ = self._forward(p)
         # Z_i = R_i / D_i with D_i = 1 + tau_i S_i, so at fixed tau:
         #   dZ/dR_i = 1/D_i,  dZ/dtau_i = -R_i S_i / D_i^2,
@@ -667,7 +669,7 @@ class _FitProblem:
 
     def cost(self, p: np.ndarray) -> float:
         """Return ``0.5 * sum(residuals(p) ** 2)``, as in ``least_squares``."""
-        r =self.residuals(p)
+        r = self.residuals(p)
         return 0.5 * float(np.dot(r, r))
 
     def project(self, p: np.ndarray) -> np.ndarray:
@@ -1204,8 +1206,7 @@ def impedance_fit(
             f"{R.shape}, expected ({n_groups},)"
         )
         assert tau.shape == (n_groups,), (
-            "initial_parameters.taus has shape "
-            f"{tau.shape}, expected ({n_groups},)"
+            f"initial_parameters.taus has shape {tau.shape}, expected ({n_groups},)"
         )
 
         dtau = np.diff(tau, prepend=0.0)
@@ -1276,9 +1277,7 @@ def impedance_fit(
         r_lo, r_hi = resistance_branch_bounds
         lower[r_slice] = np.maximum(lower[r_slice], r_lo)
         upper[r_slice] = np.minimum(upper[r_slice], r_hi)
-        parameters_init[r_slice] = np.clip(
-            parameters_init[r_slice], r_lo, r_hi
-        )
+        parameters_init[r_slice] = np.clip(parameters_init[r_slice], r_lo, r_hi)
 
     if exponent_bounds is not None and complex_fit:
         exp_lo, exp_hi = exponent_bounds
@@ -1287,9 +1286,7 @@ def impedance_fit(
         parameters_init[2] = np.clip(parameters_init[2], exp_lo, exp_hi)
         lower[e_slice] = exp_lo
         upper[e_slice] = exp_hi
-        parameters_init[e_slice] = np.clip(
-            parameters_init[e_slice], exp_lo, exp_hi
-        )
+        parameters_init[e_slice] = np.clip(parameters_init[e_slice], exp_lo, exp_hi)
 
     # Inductor exponent: kept near an inductor by default. With n_L free down to
     # 0.2 the term L (j omega)^n_L has a large real part and, together with a

@@ -6,6 +6,7 @@ result together with parameter uncertainties, and :func:`align_axes_height`
 lines up subplot boxes. See :mod:`blowing_bubbles.circuit_impedance` for the
 impedance model.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,12 +26,12 @@ from blowing_bubbles.circuit_impedance import circuit_impedance
 _CIRCUIT_PARAMS_FORMAT_VERSION = 1
 _CIRCUIT_PARAMS_FILE_TYPE = "blowing_bubbles.CircuitParameters"
 _FIT_LABEL = r"$[R_s L(R_i C_i)]$ fit"
-_TEXT_BBOX = dict(
-    facecolor="white",
-    alpha=0.8,
-    edgecolor="none",
-    boxstyle="round,pad=0.2",
-)
+_TEXT_BBOX = {
+    "facecolor": "white",
+    "alpha": 0.8,
+    "edgecolor": "none",
+    "boxstyle": "round,pad=0.2",
+}
 
 
 def align_axes_height(
@@ -62,7 +63,7 @@ def align_axes_height(
 def _plot_full_fit(
     freqs: np.ndarray,
     parameters: CircuitParameters,
-    axis : plt.Axes | None = None,
+    axis: plt.Axes | None = None,
     unit: str | None = None,
 ):
     """Draw the total model curve and each branch arc; see ``plot_full_fit``.
@@ -117,8 +118,9 @@ def _plot_full_fit(
             )
             mask_L = _Zi_pred_L.imag < 0
             axis.plot(
-                _Zi_pred_L.real[mask_L], -_Zi_pred_L.imag[mask_L],
-                label=fr"$(R_{n_groups} C_{n_groups})$ fit with one group (with $L$)"
+                _Zi_pred_L.real[mask_L],
+                -_Zi_pred_L.imag[mask_L],
+                label=rf"$(R_{n_groups} C_{n_groups})$ fit with one group (with $L$)",
             )
             # Calculate and print R1 at the midpoint of this arc, at y=0
             xline = _Zi_pred_L.real[mask_L]
@@ -126,8 +128,8 @@ def _plot_full_fit(
                 xmid = rs_i + ri_i / 2
                 axis.text(
                     xmid,
-                    -np.max(np.abs(Z_pred.imag))*0.2,
-                    fr"$R_{n_groups}$",
+                    -np.max(np.abs(Z_pred.imag)) * 0.2,
+                    rf"$R_{n_groups}$",
                     fontsize=12,
                     va="bottom",
                     ha="center",
@@ -149,8 +151,9 @@ def _plot_full_fit(
             )
             mask = _Zi_pred.imag < 0
             axis.plot(
-                _Zi_pred.real[mask], -_Zi_pred.imag[mask],
-                label=fr"$(R_{n_groups-i} C_{n_groups-i})$ fit with one group"
+                _Zi_pred.real[mask],
+                -_Zi_pred.imag[mask],
+                label=rf"$(R_{n_groups - i} C_{n_groups - i})$ fit with one group",
             )
             # Calculate and print Ri at the midpoint of this arc, at y=0
             xline = _Zi_pred.real[mask]
@@ -158,8 +161,8 @@ def _plot_full_fit(
                 xmid = rs_i + ri_i / 2
                 axis.text(
                     xmid,
-                    -np.max(np.abs(Z_pred.imag))*0.2,
-                    fr"$R_{n_groups-i}$",
+                    -np.max(np.abs(Z_pred.imag)) * 0.2,
+                    rf"$R_{n_groups - i}$",
                     fontsize=12,
                     va="bottom",
                     ha="center",
@@ -171,10 +174,10 @@ def _plot_full_fit(
     # datalim: equal aspect adjusts limits, not axes box height
     axis.set_aspect("equal", adjustable="datalim")
     axis.grid(True)
-    axis.spines['right'].set_visible(False)
-    axis.spines['top'].set_visible(False)
-    axis.set_xlabel("Z' "+ unit)
-    axis.set_ylabel("-Z'' "+ unit)
+    axis.spines["right"].set_visible(False)
+    axis.spines["top"].set_visible(False)
+    axis.set_xlabel("Z' " + unit)
+    axis.set_ylabel("-Z'' " + unit)
     return axis
 
 
@@ -286,7 +289,6 @@ class CircuitParameters:
         self.exponents = self.exponents[sort_idx]
         self.taus = self.capacitances * self.resistances
 
-    
     def sort_by_capacitance(self):
         """Sort the branches by increasing capacitance, in place.
 
@@ -416,7 +418,7 @@ class CircuitParameters:
             "exponents": self.exponents,
             "taus": self.taus,
         }
-    
+
     def __len__(self):
         """Return the number of parallel branches."""
         return len(self.taus)
@@ -429,7 +431,7 @@ class CircuitParameters:
             if isinstance(arr, np.ndarray):
                 # For 1D array of floats
                 return "[" + " ".join([f"{x:10.4e}" for x in arr]) + "]"
-           
+
             else:
                 return str(arr)
 
@@ -456,15 +458,17 @@ class CircuitParameters:
         --------
         from_array : Inverse operation.
         """
-        return np.array([
-            self.resistance_source,
-            self.inductance,
-            self.inductance_exponent,
-            *self.resistances,
-            *self.capacitances,
-            *self.exponents,
-        ])
-    
+        return np.array(
+            [
+                self.resistance_source,
+                self.inductance,
+                self.inductance_exponent,
+                *self.resistances,
+                *self.capacitances,
+                *self.exponents,
+            ]
+        )
+
     def copy(self):
         """Return an independent copy (branch arrays are copied).
 
@@ -482,7 +486,6 @@ class CircuitParameters:
             exponents=self.exponents.copy(),
         )
 
-    
     @classmethod
     def from_array(cls, array: np.ndarray, n_groups: int) -> CircuitParameters:
         """Build parameters from a flat vector (inverse of :meth:`to_array`).
@@ -504,11 +507,11 @@ class CircuitParameters:
             resistance_source=array[0],
             inductance=array[1],
             inductance_exponent=array[2],
-            resistances=array[3:3+n_groups],
-            capacitances=array[3+n_groups:3+2*n_groups],
-            exponents=array[3+2*n_groups:],
+            resistances=array[3 : 3 + n_groups],
+            capacitances=array[3 + n_groups : 3 + 2 * n_groups],
+            exponents=array[3 + 2 * n_groups :],
         )
-    
+
     def to_dict(self) -> dict:
         """Serialize to a JSON-friendly dict (branches in the stored tau order).
 
@@ -557,7 +560,8 @@ class CircuitParameters:
                     self.resistances,
                     self.capacitances,
                     self.exponents,
-                    self.taus, strict=False,
+                    self.taus,
+                    strict=False,
                 )
             ],
         }
@@ -680,7 +684,7 @@ class CircuitParameters:
             self.capacitances,
             self.exponents,
         )
-    
+
     def plot_nyquist(
         self,
         freq: np.ndarray | None = None,
@@ -733,20 +737,20 @@ class CircuitParameters:
             freq = np.logspace(-5, 5, 1000)
         Z_pred = self.get_impedance(freq)
         axis.plot(
-        Z_pred.real,
-        -Z_pred.imag,
-        label=_FIT_LABEL,
-        color="black",
-        ls="--",
-    )
+            Z_pred.real,
+            -Z_pred.imag,
+            label=_FIT_LABEL,
+            color="black",
+            ls="--",
+        )
         axis.set_aspect("equal")
         axis.grid(True)
-        axis.spines['right'].set_visible(False)
-        axis.spines['top'].set_visible(False)
-        axis.set_xlabel("Z' "+ unit)
-        axis.set_ylabel("-Z'' "+ unit)
+        axis.spines["right"].set_visible(False)
+        axis.spines["top"].set_visible(False)
+        axis.set_xlabel("Z' " + unit)
+        axis.set_ylabel("-Z'' " + unit)
         return axis
-    
+
     def plot_full_fit(
         self,
         freq: np.ndarray | None = None,
@@ -892,7 +896,7 @@ class FitResults(OptimizeResult):
         #   complex_fit=True:   [Rs, L, n_L,   R_1..R_n, C_1..C_n, e_1..e_n]
         head = 3 if complex_fit else 2
         resistances = res_ls.x[head : head + n_groups]
-        capacitances = res_ls.x[head + n_groups : head + 2*n_groups]
+        capacitances = res_ls.x[head + n_groups : head + 2 * n_groups]
         self.parameters = CircuitParameters(
             resistance_source=res_ls.x[0],
             inductance=res_ls.x[1],
@@ -900,8 +904,9 @@ class FitResults(OptimizeResult):
             resistances=resistances,
             capacitances=capacitances,
             exponents=(
-                res_ls.x[head + 2*n_groups : head + 3*n_groups]
-                if complex_fit else np.ones(n_groups)
+                res_ls.x[head + 2 * n_groups : head + 3 * n_groups]
+                if complex_fit
+                else np.ones(n_groups)
             ),
         )
         self.covariance = None
@@ -921,8 +926,8 @@ class FitResults(OptimizeResult):
             self.covariance = cov
             self.standard_errors = std
             self.correlation = corr
-        res_real = res_ls.fun[:res_ls.fun.size//2]
-        res_imag = res_ls.fun[res_ls.fun.size//2:]
+        res_real = res_ls.fun[: res_ls.fun.size // 2]
+        res_imag = res_ls.fun[res_ls.fun.size // 2 :]
         self.residuals = res_real + 1j * res_imag
         self.residuals_magnitude = np.sqrt(res_real**2 + res_imag**2)
         self.success = res_ls.success
@@ -979,7 +984,6 @@ class FitResults(OptimizeResult):
             "capacitances": se[3 + n : 3 + 2 * n].copy(),
             "exponents": se[3 + 2 * n : 3 + 3 * n].copy(),
         }
-
 
     def add_initial_rc_groups(self, rc_groups: int) -> None:
         """Record the requested maximum number of RC groups.
