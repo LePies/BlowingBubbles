@@ -24,6 +24,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "deptry>=0.20",
     "pytest>=9.2.0",
     "ruff>=0.15.14",
     "ty>=0.0.38",
@@ -50,13 +51,8 @@ default-groups = ["dev", "docs"]
 pythonpath = ["src"]
 testpaths = ["src/tests"]
 
-[tool.ruff]
-line-length = 88
-target-version = "py313"
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
-
-[tool.ty.src]
-include = ["src", "examples"]
-exclude = ["docs/**"]
+[tool.deptry]
+known_first_party = ["blowing_bubbles"]
+extend_exclude = ["docs/"]
+package_module_name_map = { "pywebview" = "webview" }
+ignore = { "DEP002" = ["tool"], "DEP004" = ["pytest"] }

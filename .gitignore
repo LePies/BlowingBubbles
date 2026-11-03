@@ -13,6 +13,7 @@ wheels/
 # --- Docs and tooling ---
 .venv/
 .ruff_cache/
+.pytest_cache/
 docs/_build/
 __pycache__/
 *.py[cod]
