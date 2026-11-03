@@ -854,7 +854,9 @@ def impedance_fit(
         Margin factor for ``L`` bounds from the slope estimate (default ``2.0``).
     resistance_source_bounds : tuple of float, optional
         ``(R_s_min, R_s_max)`` box bounds for the source resistance :math:`R_s`.
-        If ``None``, defaults to ``(0, \infty)``.
+        If ``None``, the lower bound defaults to a strictly positive floor
+        (``1e-12`` times the ``Z'`` span; a non-positive ``R_s_min`` keeps it)
+        so relative errors in :math:`R_s` stay finite; upper bound ``\\infty``.
     resistance_branch_bounds : tuple of float, optional
         ``(R_min, R_max)`` uniform box bounds for all branch resistances.
         If ``None``, defaults to ``(\epsilon, \infty)`` with
@@ -991,6 +993,7 @@ def impedance_fit(
     # Strictly positive R_i and tau_1 (hence every tau_i) keep C_i = tau_i / R_i
     # finite and positive, also after _project_feasible clips to the bounds.
     r_floor = _POSITIVE_FLOOR_REL * z_span
+    lower[0] = r_floor
     f_max = float(np.max(X)) if np.size(X) else 0.0
     f_ref = f_max if f_max > 0 else 1.0
     tau_floor = _POSITIVE_FLOOR_REL / (2.0 * np.pi * f_ref)
