@@ -97,14 +97,14 @@ def start_streamlit_inprocess(port: int) -> threading.Thread:
     is appended to the module-level ``START_ERROR`` list, which :func:`main`
     reports if the server does not come up.
     """
-    from streamlit.web import bootstrap  # noqa: PLC0415 — lazy import
+    from streamlit.web import bootstrap
 
     # In a frozen app the config is typically already parsed before we run,
     # and bootstrap.run only applies flag_options when a config.toml changes.
     # Force a re-parse with dot-separated flag names so the server binds the
     # chosen port; this replaces the parsed option objects wholesale, which
     # also works in frozen builds where config files are never re-read.
-    from streamlit.web.bootstrap import load_config_options  # noqa: PLC0415
+    from streamlit.web.bootstrap import load_config_options
 
     load_config_options(
         {
@@ -199,7 +199,7 @@ def main() -> None:
     blocks in ``webview.start()`` until the window is closed. The server runs on
     a daemon thread, so it stops when the process exits.
     """
-    import webview  # noqa: PLC0415 — lazy: needs WebView2 runtime at run time
+    import webview
 
     port = free_port()
     start_streamlit_inprocess(port)

@@ -14,8 +14,12 @@ from blowing_bubbles.scripts import global_minimize
 
 FREQ = np.logspace(-2, 5, 40)
 TRUTH = CircuitParameters(
-    10.0, 0.0, 1.0,
-    np.array([20.0, 50.0]), np.array([1e-5, 1e-2]), np.array([0.9, 0.85]),
+    10.0,
+    0.0,
+    1.0,
+    np.array([20.0, 50.0]),
+    np.array([1e-5, 1e-2]),
+    np.array([0.9, 0.85]),
 )
 
 
@@ -270,12 +274,13 @@ def test_quick_fit_defaults_match_impendance_fit(func):
 
 
 def test_quick_fit_complex_fit_defaults_unchanged():
-    assert inspect.signature(EISData.quick_fit).parameters[
-        "complex_fit"
-    ].default is True
-    assert inspect.signature(data_classes.quick_fit).parameters[
-        "complex_fit"
-    ].default is False
+    assert (
+        inspect.signature(EISData.quick_fit).parameters["complex_fit"].default is True
+    )
+    assert (
+        inspect.signature(data_classes.quick_fit).parameters["complex_fit"].default
+        is False
+    )
 
 
 @pytest.fixture

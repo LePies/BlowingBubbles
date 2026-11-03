@@ -22,7 +22,7 @@ from blowing_bubbles.circuit_impedance import circuit_impedance
 
 def _relative_rms(z_model: np.ndarray, z_data: np.ndarray) -> float:
     """Return the RMS of ``|z_model - z_data| / |z_data|`` over all points."""
-    w =1.0 / np.maximum(np.abs(z_data), np.finfo(float).tiny)
+    w = 1.0 / np.maximum(np.abs(z_data), np.finfo(float).tiny)
     return float(np.sqrt(np.mean(np.abs((z_model - z_data) * w) ** 2)))
 
 
@@ -146,8 +146,7 @@ def lin_kk(
         mu = 1.0 - neg / pos if pos > 0 else 0.0
         if mu <= c_threshold:
             break
-    if coef is None:
-        return None
+    assert coef is not None and basis is not None and mu is not None
     # The fitted spectrum and residual are only needed for the selected M.
     z_fit = np.hstack([a_fixed, basis]) @ coef
     return {
@@ -208,7 +207,7 @@ def fit_quality(data, parameters, kk_ratio_threshold: float = 3.0) -> dict:
         exponents=p.exponents,
     )
     kk = lin_kk(f, z)
-    rms_fit = _relative_rms(z_fit, z)
+    rms_fit = _relative_rms(np.asarray(z_fit), z)
     ratio = rms_fit / max(kk["rms_rel"], np.finfo(float).tiny)
     r_total_fit = float(p.resistance_source + np.sum(p.resistances))
     r_total_lowf = float(np.real(z[np.argmin(f)]))
