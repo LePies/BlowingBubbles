@@ -19,12 +19,14 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.11.16,<0.12.0"]
+requires = ["uv_build>=0.11.16,<0.14.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "deptry>=0.20",
     "pytest>=9.2.0",
+    "pytest-cov>=7.0.0",
     "ruff>=0.15.14",
     "ty>=0.0.38",
 ]
@@ -52,13 +54,16 @@ default-groups = ["dev", "docs"]
 pythonpath = ["src"]
 testpaths = ["src/tests"]
 
-[tool.ruff]
-line-length = 88
-target-version = "py313"
+[tool.coverage.run]
+source = ["blowing_bubbles"]
+omit = ["src/blowing_bubbles/ui/*", "src/tests/*"]
 
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
 
-[tool.ty.src]
-include = ["src", "examples"]
-exclude = ["docs/**"]
+[tool.deptry]
+known_first_party = ["blowing_bubbles"]
+extend_exclude = ["docs/"]
+package_module_name_map = { "pywebview" = "webview" }
+ignore = { "DEP002" = ["tool"], "DEP004" = ["pytest"] }

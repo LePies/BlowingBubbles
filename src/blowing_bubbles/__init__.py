@@ -16,4 +16,4 @@ scientific work; see ``ACADEMIC_CITATION.md``.
 
 __version__ = "0.2.0"
 
-__all__ = ["classes", "circuit_impedance", "scripts", "__version__"]
+__all__ = ["__version__", "circuit_impedance", "classes", "scripts"]

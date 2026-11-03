@@ -3,6 +3,13 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import re
+from pathlib import Path
+
+from docutils import nodes
+from docutils.parsers.rst import Directive
+from docutils.statemachine import StringList
+
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
@@ -13,14 +20,6 @@ release = "0.2.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
-
-from pathlib import Path
-
-from docutils import nodes
-from docutils.parsers.rst import Directive
-from docutils.statemachine import StringList
-
-import re
 
 extensions = [
     "autoapi.extension",
@@ -45,7 +44,8 @@ html_theme = "furo"
 # -- Auto-api setup ----------------------------------------------------------
 
 autoapi_dirs = ["../../src/blowing_bubbles"]
-autoapi_template_dir = "_templates/autoapi"  # index.rst lists subpackages next to blowing_bubbles
+# index.rst lists subpackages next to blowing_bubbles
+autoapi_template_dir = "_templates/autoapi"
 autoapi_ignore = ["*/examples/*"]
 autoapi_options = [
     "members",

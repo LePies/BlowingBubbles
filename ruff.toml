@@ -1,0 +1,14 @@
+line-length = 88
+target-version = "py313"
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "W", "C4", "SIM", "RUF"]
+# En-dashes and similar typography in docstrings/strings are intentional.
+ignore = ["RUF001", "RUF002"]
+
+[lint.isort]
+known-first-party = ["blowing_bubbles"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

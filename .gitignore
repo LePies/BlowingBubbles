@@ -13,6 +13,9 @@ wheels/
 # --- Docs and tooling ---
 .venv/
 .ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
 docs/build/
 __pycache__/
 *.py[cod]
