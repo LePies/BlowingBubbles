@@ -47,7 +47,7 @@ installs by default. From the project root:
 
 ```bash
 uv sync
-uv run sphinx-build -b html docs docs/_build
+uv run sphinx-build -W -b html docs docs/_build
 ```
 
 Then open `docs/_build/index.html` in a browser.
