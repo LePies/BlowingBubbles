@@ -1,4 +1,8 @@
-"""Launch the Streamlit UI via ``python -m blowing_bubbles.ui``."""
+"""Launch the Streamlit UI via ``python -m blowing_bubbles.ui``.
+
+Runs ``python -m streamlit run <package>/ui/app.py`` in a subprocess with the
+current interpreter and exits with its return code.
+"""
 
 import subprocess
 import sys

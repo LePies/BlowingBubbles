@@ -10,7 +10,7 @@ wheels/
 .venv
 
 
-# --- ompy_docs ---
+# --- Docs and tooling ---
 .venv/
 .ruff_cache/
 docs/_build/

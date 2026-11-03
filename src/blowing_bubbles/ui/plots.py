@@ -1,4 +1,11 @@
-"""Matplotlib figure builders shared by the UI tabs (Streamlit-independent)."""
+"""Build matplotlib figures shared by the UI tabs (Streamlit-independent).
+
+:func:`nyquist_figure`, :func:`residual_figure` and
+:func:`batch_summary_figure` return figures for the Single/Live Tune and Batch
+tabs. Model curves are evaluated on ``FREQ_GRID`` (400 log-spaced points from
+1e-5 Hz to 1e5 Hz). Importing this module selects the non-interactive ``Agg``
+matplotlib backend.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +26,24 @@ def nyquist_figure(
     fits: list[tuple[str, FitResults | CircuitParameters]] | None = None,
     unit: str = r"$\Omega$",
 ) -> plt.Figure:
-    """Nyquist plot of the measured spectrum overlaid with model curves."""
+    r"""Plot the measured spectrum as a Nyquist plot overlaid with model curves.
+
+    Parameters
+    ----------
+    data : EISData or None
+        Measured spectrum, drawn as black markers. ``None`` plots models only.
+    fits : list of tuple, optional
+        ``(label, model)`` pairs where ``model`` is a :class:`FitResults` or
+        :class:`CircuitParameters`; each is drawn as a curve evaluated on
+        ``FREQ_GRID``. ``None`` draws no models.
+    unit : str, default r"$\Omega$"
+        Impedance unit appended to the axis labels (matplotlib mathtext).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure with equal axis scaling, :math:`Z'` vs :math:`-Z''`.
+    """
     fig, ax = plt.subplots(figsize=(6.5, 5.5))
     if data is not None:
         ax.plot(
@@ -54,7 +78,23 @@ def residual_figure(
     fit: FitResults,
     unit: str = r"$\Omega$",
 ) -> plt.Figure:
-    """Magnitude of the complex residuals versus frequency."""
+    r"""Plot the magnitude of the complex residuals versus frequency.
+
+    Parameters
+    ----------
+    data : EISData
+        Spectrum the fit was made on (supplies the frequencies, Hz).
+    fit : FitResults
+        Fit whose ``residuals_magnitude`` is plotted; must have the same length
+        as ``data.Freq``.
+    unit : str, default r"$\Omega$"
+        Impedance unit appended to the y-axis label (matplotlib mathtext).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Semilog-x plot of :math:`|\hat{Z}_k - Z_k|`.
+    """
     fig, ax = plt.subplots(figsize=(6.5, 3.5))
     ax.semilogx(data.Freq, fit.residuals_magnitude, "o-", markersize=3)
     ax.grid(True)
@@ -71,7 +111,28 @@ def batch_summary_figure(
     data_by_name: dict[str, EISData],
     params_by_name: dict[str, CircuitParameters],
 ) -> plt.Figure:
-    """Grid of Nyquist overlays, one panel per successfully fitted file."""
+    """Plot a grid of Nyquist overlays, one panel per successfully fitted file.
+
+    Parameters
+    ----------
+    rows : list of dict
+        Batch report rows; rows with a truthy ``"success"`` get a panel, titled
+        by their ``"file"`` value.
+    data_by_name : dict of str to EISData
+        Measured spectra keyed by file name.
+    params_by_name : dict of str to CircuitParameters
+        Fitted parameters keyed by file name, drawn on ``FREQ_GRID``.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Grid with at most three columns; unused panels are hidden.
+
+    See Also
+    --------
+    blowing_bubbles.ui.batch.run_batch : Saves this figure as
+        ``batch_summary.png``.
+    """
     ok = [r for r in rows if r.get("success")]
     n = max(len(ok), 1)
     ncols = min(3, n)

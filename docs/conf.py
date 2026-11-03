@@ -186,7 +186,7 @@ html_theme_options = {
     "sidebar_hide_name": False,
     "navigation_with_keys": True,
 }
-# html_logo not set â€” pass -IconPath to Init-OmpyDocs to add a package icon
+# html_logo not set; to add a package icon see "Package icon" in getting_started.rst
 html_favicon = None
 html_show_sourcelink = True
 html_show_sphinx = False

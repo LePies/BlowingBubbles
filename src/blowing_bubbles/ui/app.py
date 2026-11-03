@@ -1,12 +1,25 @@
-r"""BlowingBubbles Streamlit UI.
+r"""Run the BlowingBubbles Streamlit UI (Streamlit script).
 
 Launch with::
 
     streamlit run src/blowing_bubbles/ui/app.py
 
-Three tabs: **Single** (load one spectrum, fit, view, refine, save),
-**Batch** (fit a whole folder into an output folder), **Live Tune**
-(adjust R / C / tau / e / L with sliders and watch the Nyquist move).
+or ``python -m blowing_bubbles.ui``, or as a desktop window via
+:mod:`blowing_bubbles.ui.desktop`. Importing this module executes the app
+(``st.set_page_config`` and :func:`main` run at import time).
+
+Four tabs:
+
+- **Single** (:func:`single_tab`): load one spectrum (CSV upload or synthetic
+  demo), fit it (optionally refined with ``quick_fit``), view Nyquist and
+  residual plots and the parameter table, download the parameters as JSON.
+- **Batch** (:func:`batch_tab`): fit selected CSVs of an input folder into an
+  output folder with :func:`~blowing_bubbles.ui.batch.run_batch` and inspect
+  individual fits.
+- **Live Tune** (:func:`live_tab`): adjust Rs / L / n_L and per-branch
+  R / tau / e with sliders and watch the Nyquist plot move.
+- **Analysis** (:func:`analysis_tab`): resistance breakdown per file and
+  difference spectra against a reference for a batch output folder.
 """
 
 from __future__ import annotations
@@ -34,6 +47,13 @@ FREQ_GRID = np.logspace(-2, 5, 300)
 
 
 def _fit_controls(key_prefix: str) -> dict:
+    """Render the "Fit settings" expander and return the chosen settings.
+
+    Widget keys are prefixed with ``key_prefix``. The returned dict has keys
+    ``n_restarts``, ``rc_groups``, ``seed``, ``weighting``, ``n_jobs``,
+    ``refine``, ``rs_bounds``, ``r_bounds`` and ``e_bounds`` (bounds parsed by
+    :func:`_parse_bounds`).
+    """
     with st.expander("Fit settings", expanded=False):
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -72,6 +92,10 @@ def _fit_controls(key_prefix: str) -> dict:
 
 
 def _parse_bounds(text: str) -> tuple[float, float] | None:
+    """Parse ``"lo,hi"`` (optionally bracketed) into floats; ``None`` if invalid.
+
+    Empty or unparsable text, or fewer than two values, gives ``None``.
+    """
     text = text.strip().strip("()[]")
     if not text:
         return None
@@ -83,6 +107,7 @@ def _parse_bounds(text: str) -> tuple[float, float] | None:
 
 
 def _fit_kwargs(c: dict) -> dict:
+    """Map fit-control settings to keyword arguments for ``EISData.fit``."""
     return {
         "n_restarts": c["n_restarts"],
         "rc_groups": c["rc_groups"],
@@ -96,6 +121,7 @@ def _fit_kwargs(c: dict) -> dict:
 
 
 def _quick_kwargs(c: dict) -> dict:
+    """Map fit-control settings to keyword arguments for ``EISData.quick_fit``."""
     return {
         "complex_fit": True,
         "seed": c["seed"],
@@ -106,6 +132,7 @@ def _quick_kwargs(c: dict) -> dict:
 
 
 def _load_data(uploaded) -> EISData:
+    """Read a CSV file-like object (e.g. an upload) into :class:`EISData`."""
     frame = pd.read_csv(uploaded)
     return EISData(frame)
 
@@ -113,6 +140,12 @@ def _load_data(uploaded) -> EISData:
 def _parameter_table(
     params: CircuitParameters, uncertainties: dict | None
 ) -> pd.DataFrame:
+    """Return a ``parameter``/``value`` table of ``params`` for display.
+
+    Rows are Rs, L, n_L, then all R_i, C_i, tau_i and e_i. If ``uncertainties``
+    (as from ``FitResults.parameter_uncertainties()``) is given, a ``std_err``
+    column is added (NaN for tau_i).
+    """
     n = len(params)
     rows = [
         ("Rs (Ohm)", params.resistance_source),
@@ -141,6 +174,11 @@ def _parameter_table(
 
 
 def _result_panel(data: EISData, label: str, result) -> None:
+    """Render fit statistics, a quality caption and the parameter table.
+
+    Errors from :func:`~blowing_bubbles.scripts.quality.fit_quality` are
+    silently ignored (no caption is shown).
+    """
     st.markdown(
         f"**{label}** — success: `{result.success}`, "
         f"cost: `{result.cost:.3e}`, nfev: `{result.nfev}`, "
@@ -158,6 +196,23 @@ def _result_panel(data: EISData, label: str, result) -> None:
 
 
 def single_tab() -> None:
+    """Render the Single tab: load, fit, inspect and download one spectrum.
+
+    Notes
+    -----
+    Session state:
+
+    - ``"single_data"`` (read/written): the loaded :class:`EISData`; set from
+      an uploaded CSV or, if the demo box is ticked and nothing is loaded yet,
+      from :func:`~blowing_bubbles.ui.batch.make_synthetic_csv`.
+    - ``"single_fits"`` (read/written): list of ``(label, FitResults)``; each
+      "Run fit" click appends one. All fits are overlaid on the Nyquist plot;
+      the latest is shown in the result panel and residual plot.
+
+    Fitting runs :meth:`EISData.fit` with the "Fit settings" and, if "Refine
+    with quick_fit" is ticked, :meth:`EISData.quick_fit` seeded with its
+    parameters.
+    """
     st.header("Single spectrum")
     uploaded = st.file_uploader("EIS CSV", type=["csv"])
     demo = st.checkbox("No file? Use synthetic demo spectrum")
@@ -212,7 +267,9 @@ def single_tab() -> None:
 
 
 def _folder_row(label: str, key: str) -> str:
-    """Text field + native 'Browse' button (desktop app) for a folder path.
+    """Render a folder-path text field with a native "Browse" button.
+
+    Returns the current value of ``st.session_state[key]`` ("" if unset).
 
     The callback writes the text input's own widget key — legal inside an
     on_click callback because callbacks run before widgets are instantiated
@@ -222,6 +279,7 @@ def _folder_row(label: str, key: str) -> str:
     from blowing_bubbles.ui import folder_picker
 
     def _on_browse() -> None:
+        """Store the picked folder (if any) in the text field's state key."""
         picked = folder_picker.pick_folder()
         if picked:
             st.session_state[key] = picked
@@ -233,6 +291,26 @@ def _folder_row(label: str, key: str) -> str:
 
 
 def batch_tab() -> None:
+    """Render the Batch tab: fit a folder of CSV spectra and inspect results.
+
+    Notes
+    -----
+    Runs :func:`~blowing_bubbles.ui.batch.run_batch` on the selected CSVs of
+    the input folder (optionally area-normalized, refined with ``quick_fit``
+    if ticked), with a progress bar, then shows the report, the summary
+    image and a Nyquist plot plus parameter table for a chosen successful file.
+    If no batch was run in this session, an existing ``batch_report.csv`` in
+    the output folder is loaded instead.
+
+    Session state:
+
+    - ``"batch_in"``, ``"batch_out"`` (widget keys): input/output folders.
+    - ``"batch_area"``, ``"batch_files"``, ``"batch_pick"`` (widget keys):
+      area text, selected files and inspected file.
+    - ``"batch_report"`` (read/written): the report DataFrame.
+    - ``"batch_out_dir"`` (read/written): output folder of that report; also
+      read by :func:`analysis_tab`.
+    """
     st.header("Batch: fit a folder")
     in_dir = _folder_row("Input folder (CSV spectra)", "batch_in")
     out_dir = _folder_row("Output folder", "batch_out")
@@ -270,6 +348,7 @@ def batch_tab() -> None:
         progress = st.progress(0.0, text="Starting...")
 
         def cb(i: int, n: int, name: str) -> None:
+            """Update the progress bar for file ``i`` of ``n``."""
             progress.progress(i / max(n, 1), text=f"file {i}/{n} — {name}")
 
         with st.spinner("Running batch..."):
@@ -322,6 +401,28 @@ def batch_tab() -> None:
 
 
 def live_tab() -> None:
+    """Render the Live Tune tab: edit circuit parameters with sliders.
+
+    Notes
+    -----
+    Sliders set Rs, L, n_L, the branch count and per-branch R, tau and e;
+    tau is applied via :func:`~blowing_bubbles.ui.live.set_branch_tau`
+    (``C = tau / R``). The model is overlaid on the measured spectrum (if
+    any), with the live relative RMS residual. Changing the branch count adds
+    default branches or removes the last ones and reruns the script.
+
+    Session state:
+
+    - ``"single_data"`` (read): measured spectrum from the Single tab.
+    - ``"single_fits"`` (read): if ``"live_params"`` is unset, the latest
+      fit's parameters seed it (else
+      :func:`~blowing_bubbles.ui.live.default_parameters`).
+    - ``"live_params"`` (read/written): the edited
+      :class:`CircuitParameters`, modified in place.
+    - ``"quick_initial"`` (written): a copy of the parameters when "Use as
+      quick_fit initial guess" is clicked.
+    - ``"lv_*"`` (widget keys): the sliders.
+    """
     st.header("Live tune")
     data = st.session_state.get("single_data")
     if data is not None:
@@ -397,6 +498,26 @@ def live_tab() -> None:
 
 
 def analysis_tab() -> None:
+    r"""Render the Analysis tab: resistance breakdown and difference spectra.
+
+    Notes
+    -----
+    Builds :func:`~blowing_bubbles.ui.analysis.analysis_table` from the batch
+    output folder and shows it in an editable table whose ``order`` column
+    sets the plotting order. The chosen branch resistances are plotted
+    individually (the others summed into ``R_rest``) together with Rs, Rp and
+    Rtot. If the input folder is known and some fits succeeded, model
+    difference spectra :math:`\Delta Z` against a chosen reference file are
+    plotted as :math:`-\mathrm{Im}(\Delta Z)` or :math:`|\Delta Z|`.
+
+    Session state:
+
+    - ``"batch_out_dir"`` and ``"batch_in"`` (read): output and input folders
+      from the Batch tab; text fields ``"analysis_out"`` and ``"analysis_in"``
+      are shown only when these are unset.
+    - ``"analysis_table_editor"``, ``"analysis_branches"``, ``"analysis_ref"``,
+      ``"analysis_pick"``, ``"analysis_mode"`` (widget keys).
+    """
     st.header("Analysis of fitted results")
     from blowing_bubbles.ui import analysis as analysis_mod
     from blowing_bubbles.ui import analysis_plots
@@ -474,6 +595,7 @@ def analysis_tab() -> None:
 
 
 def main() -> None:
+    """Render the page title and the Single, Batch, Live Tune and Analysis tabs."""
     st.title("BlowingBubbles — EIS circuit fitting")
     tab_single, tab_batch, tab_live, tab_analysis = st.tabs(
         ["Single", "Batch", "Live Tune", "Analysis"]

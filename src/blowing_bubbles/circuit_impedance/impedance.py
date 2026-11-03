@@ -11,6 +11,10 @@ and :math:`n` parallel R–CPE branches (Debye / Cole–Cole style elements):
 with angular frequency :math:`\omega = 2\pi f`. Branch time constants are
 :math:`\tau_i = R_i C_i`. Setting :math:`e_i = 1` recovers ideal capacitors;
 :math:`e_i < 1` gives constant-phase elements (CPEs).
+
+Public entry points are :func:`circuit_impedance` (forward model) and
+:func:`circuit_impedance_parameter_gradient` (analytic partial derivatives);
+:func:`circuit_assert_arguments` validates their shared arguments.
 """
 
 import numpy as np
@@ -27,18 +31,40 @@ def circuit_assert_arguments(
     capacitances: np.ndarray = _EMPTY_BRANCH_ARRAY,
     exponents: np.ndarray | None = None,
 ) -> tuple[np.ndarray, float, float, float, np.ndarray, np.ndarray, np.ndarray, bool]:
-    r"""Validate and normalize arguments for :func:`circuit_impedance`.
+    r"""Validate and normalize the arguments of :func:`circuit_impedance`.
 
-    Coerces scalar ``freq`` to a length-1 array and defaults ``exponents`` to ones.
-    Returns the normalized inputs plus ``isfloat`` (``True`` when a scalar frequency
-    was passed so the caller can return a scalar impedance).
+    Converts all inputs to floats / float arrays, coerces a scalar *freq* to a
+    length-1 array and defaults *exponents* to ones.
+
+    Parameters
+    ----------
+    freq : float or numpy.ndarray
+        Frequency or frequencies (Hz); lists and tuples are accepted.
+    resistance_source, inductance, inductance_exponent : float
+        Global parameters :math:`R_s`, :math:`L`, :math:`n_L`.
+    resistances, capacitances : numpy.ndarray, shape (n_branches,)
+        Branch parameters :math:`R_i`, :math:`C_i`.
+    exponents : numpy.ndarray, shape (n_branches,), optional
+        Branch exponents :math:`e_i`. ``None`` (default) means all ones.
+
+    Returns
+    -------
+    freq : numpy.ndarray, shape (n_freq,)
+        Frequencies as a 1-D float array.
+    resistance_source, inductance, inductance_exponent : float
+        Global parameters as floats.
+    resistances, capacitances, exponents : numpy.ndarray
+        Branch parameters as float arrays.
+    isfloat : bool
+        ``True`` when a scalar frequency was passed, so the caller can return
+        a scalar impedance.
 
     Raises
     ------
     TypeError
-        If an argument is not numeric.
+        If an argument cannot be converted to a float or float array.
     ValueError
-        If branch array shapes are inconsistent.
+        If *resistances*, *capacitances* and *exponents* differ in shape.
     """
     if isinstance(freq, (list, tuple)):
         freq = np.asarray(freq)
@@ -86,36 +112,49 @@ def circuit_impedance(
     capacitances: np.ndarray = _EMPTY_BRANCH_ARRAY,
     exponents: np.ndarray | None = None,
 ) -> np.complex128 | np.ndarray:
-    r"""
-    Calculate the impedance of a circuit.
-
-    .. math::
-        Z = R_s + (j \omega)^n L + \sum_{i=1}^n \frac{R_i}{1 + R_i C_i (j \omega)^e_i}
-
-    where:
-    - :math:`R_s` is the source resistance
-    - :math:`L` is the inductance
-    - :math:`n` is the inductance exponent
-    - :math:`R_i` is the resistance of the i-th parallel branch
-    - :math:`C_i` is the capacitance of the i-th parallel branch
-    - :math:`e_i` is the exponent of the capacitance of the i-th parallel branch
+    r"""Calculate the impedance of the R–CPE ladder circuit.
 
     Parameters
     ----------
-    freq : float | np.ndarray
-        Frequency in Hz.
-    resistance_source : float
-        Resistance of the source in Ohm.
-    inductance : float
-        Inductance in H.
-    inductance_exponent : float
-        Exponent of the inductance.
-    resistances : np.ndarray
-        Resistances in Ohm.
-    capacitances : np.ndarray
-        Capacitances in F.
-    exponents : np.ndarray | None
-        Exponents of the capacitances.
+    freq : float or numpy.ndarray
+        Frequency or frequencies :math:`f` (Hz); lists and tuples are accepted.
+    resistance_source : float, default 0
+        Series (source) resistance :math:`R_s` (Ω).
+    inductance : float, default 0
+        Inductance :math:`L` (H for :math:`n_L = 1`).
+    inductance_exponent : float, default 1
+        Inductor exponent :math:`n_L`.
+    resistances : numpy.ndarray, shape (n_branches,), default empty
+        Branch resistances :math:`R_i` (Ω).
+    capacitances : numpy.ndarray, shape (n_branches,), default empty
+        Branch capacitances :math:`C_i` (F for :math:`e_i = 1`).
+    exponents : numpy.ndarray, shape (n_branches,), optional
+        Branch CPE exponents :math:`e_i`. ``None`` (default) means all ones
+        (ideal capacitors).
+
+    Returns
+    -------
+    Z : numpy.complex128 or numpy.ndarray
+        Complex impedance; a scalar if *freq* is a scalar, otherwise an array
+        of shape ``(n_freq,)``.
+
+    See Also
+    --------
+    circuit_assert_arguments : Argument validation (raises ``TypeError`` for
+        non-numeric input and ``ValueError`` for mismatched branch shapes).
+    circuit_impedance_parameter_gradient : Analytic partial derivatives.
+
+    Notes
+    -----
+    .. math::
+
+        Z(\omega) = R_s + (j\omega)^{n_L} L
+                    + \sum_{i=1}^{n} \frac{R_i}{1 + R_i C_i (j\omega)^{e_i}}
+
+    with :math:`\omega = 2\pi f` and :math:`n` the number of branches. With
+    the default arguments the circuit is empty and :math:`Z = 0`. Capacitive
+    branches give :math:`\mathrm{Im}(Z) < 0`, the inductor
+    :math:`\mathrm{Im}(Z) > 0`.
     """
 
     (
@@ -164,22 +203,54 @@ def circuit_impedance_parameter_gradient(
     capacitances: np.ndarray = _EMPTY_BRANCH_ARRAY,
     exponents: np.ndarray | None = None,
 ) -> dict[str, np.ndarray]:
-    r"""Analytic partial derivatives of :func:`circuit_impedance` w.r.t. each parameter.
+    r"""Return the analytic partial derivatives of :func:`circuit_impedance`.
 
-    Returns a dict with keys ``resistance_source``, ``inductance``,
-    ``inductance_exponent``, ``resistances``, ``capacitances``, and ``exponents``.
-    Branch arrays have shape ``(n_freq, n_branches)``; global terms are
-    length ``n_freq``.
+    Parameters
+    ----------
+    freq : float or numpy.ndarray
+        Frequency or frequencies :math:`f` (Hz).
+    resistance_source, inductance, inductance_exponent : float
+        Global parameters :math:`R_s` (Ω), :math:`L`, :math:`n_L`; defaults
+        0, 0, 1.
+    resistances, capacitances : numpy.ndarray, shape (n_branches,)
+        Branch parameters :math:`R_i` (Ω), :math:`C_i`; default empty.
+    exponents : numpy.ndarray, shape (n_branches,), optional
+        Branch exponents :math:`e_i`. ``None`` (default) means all ones.
 
-    For branch :math:`i`, with :math:`Y_i = 1 + R_i C_i (j\omega)^{e_i}`:
+    Returns
+    -------
+    gradient : dict of str to numpy.ndarray
+        Partial derivatives :math:`\partial Z / \partial p`, keyed by
+        parameter name: ``resistance_source``, ``inductance`` and
+        ``inductance_exponent`` with shape ``(n_freq,)``; ``resistances``,
+        ``capacitances`` and ``exponents`` with shape
+        ``(n_freq, n_branches)``. Arrays are returned even for a scalar
+        *freq* (``n_freq = 1``).
+
+    See Also
+    --------
+    circuit_impedance : The differentiated model.
+    circuit_assert_arguments : Argument validation.
+
+    Notes
+    -----
+    With :math:`s = j\omega` and :math:`Y_i = 1 + R_i C_i s^{e_i}`:
 
     .. math::
 
-        \frac{\partial Z}{\partial R_i} =
-            \frac{1}{Y_i} - \frac{R_i C_i (j\omega)^{e_i}}{Y_i^2}, \quad
-        \frac{\partial Z}{\partial C_i} = -\frac{R_i^2 (j\omega)^{e_i}}{Y_i^2}
+        \frac{\partial Z}{\partial R_s} = 1, \quad
+        \frac{\partial Z}{\partial L} = s^{n_L}, \quad
+        \frac{\partial Z}{\partial n_L} = s^{n_L} L \ln s,
 
-    Parameters match :func:`circuit_impedance`.
+        \frac{\partial Z}{\partial R_i} =
+            \frac{1}{Y_i} - \frac{R_i C_i s^{e_i}}{Y_i^2} = \frac{1}{Y_i^2},
+        \quad
+        \frac{\partial Z}{\partial C_i} = -\frac{R_i^2 s^{e_i}}{Y_i^2},
+        \quad
+        \frac{\partial Z}{\partial e_i} =
+            -\frac{R_i^2 C_i s^{e_i} \ln s}{Y_i^2}.
+
+    The derivative with respect to :math:`R_s` is returned as a real array.
     """
     (
         freq,

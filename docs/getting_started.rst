@@ -70,13 +70,14 @@ with ``=``). For matplotlib figures, use filenames like ``plot_demo.py``.
 Package icon
 ------------
 
-To show a logo in the sidebar and on the home page, re-run init with an image path
-(``.png``, ``.jpg``, or ``.svg``), or copy your icon to :file:`docs/_static/package_icon.png`
-and set ``html_logo`` / ``html_favicon`` in :file:`docs/conf.py`.
+To show a logo in the sidebar, copy an image (``.png``, ``.jpg``, or ``.svg``) to
+:file:`docs/_static/` and point ``html_logo`` (and optionally ``html_favicon``) at it
+in :file:`docs/conf.py`:
 
-.. code-block:: powershell
+.. code-block:: python
 
-   Init-OmpyDocs -ProjectPath . -IconPath .\assets\logo.png -Force
+   html_logo = "_static/package_icon.png"
+   html_favicon = "_static/package_icon.png"
 
 Using the package
 -----------------
@@ -94,11 +95,7 @@ After ``uv sync``, import from the installed package:
 Building this documentation
 ---------------------------
 
-.. code-block:: bash
-
-   Build-OmpyDocs
-
-Or manually:
+The documentation is built with Sphinx. From the project root:
 
 .. code-block:: bash
 

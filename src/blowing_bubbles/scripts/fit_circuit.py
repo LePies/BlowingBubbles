@@ -1,9 +1,13 @@
-r"""Sequential model expansion (grow branch count until ``n_groups_max``).
+r"""Fit the R–CPE ladder by sequential branch expansion (IFBB).
 
+The branch count grows from the initial peak-based guess up to ``rc_groups``.
 After each fit, a new R–CPE branch is seeded where the residual magnitude is
 largest on the frequency segment with the greatest integrated error.
 
-See :func:`fit_circuit` for the public entry point.
+Public entry points are :func:`fit_circuit` (the full fit) and
+:func:`information_criterion` (BIC/AIC used for branch selection), plus the
+residual-segment helpers :func:`segment_magnitude_integrals` and
+:func:`argmax_residual_in_largest_area_segment`.
 """
 
 import warnings
@@ -22,7 +26,11 @@ from blowing_bubbles.scripts.quality import fit_quality
 
 
 def _segment_boundaries_at_local_minima(y: np.ndarray) -> list[int]:
-    """Split index ranges at interior local minima (one segment per peak)."""
+    """Return segment boundaries at interior local minima of ``y``.
+
+    The result starts with 0 and ends with ``len(y)``, so consecutive entries
+    delimit half-open index ranges, one per peak.
+    """
     n = len(y)
     if n < 2:
         return [0, n]
@@ -36,7 +44,32 @@ def segment_magnitude_integrals(
 ) -> tuple[list[tuple[int, int]], list[float]]:
     r"""Integrate :math:`|r|` over :math:`\log_{10} f` between local minima.
 
-    Segments lie between successive minima of :math:`|r|`.
+    Parameters
+    ----------
+    magnitude : numpy.ndarray
+        Residual magnitude :math:`|r_k|`, shape ``(M,)``.
+    log_freq : numpy.ndarray
+        :math:`\log_{10} f_k` (f in Hz), shape ``(M,)``, in the same order as
+        ``magnitude``.
+
+    Returns
+    -------
+    segment_ranges : list of tuple of int
+        Inclusive ``(start, end)`` index range of each segment.
+    integrated_areas : list of float
+        Trapezoidal integral of ``magnitude`` over ``log_freq`` on each segment,
+        aligned with ``segment_ranges``.
+
+    See Also
+    --------
+    argmax_residual_in_largest_area_segment
+
+    Notes
+    -----
+    Segments lie between successive interior local minima of :math:`|r|`
+    (a minimum belongs to the segment that starts at it). Segments with fewer
+    than two points are dropped. The sign of each area follows the ordering of
+    ``log_freq`` (negative for descending frequencies).
     """
     segment_indices = _segment_boundaries_at_local_minima(magnitude)
     integrated_areas: list[float] = []
@@ -57,7 +90,31 @@ def argmax_residual_in_largest_area_segment(
     segment_ranges: list[tuple[int, int]],
     integrated_areas: list[float],
 ) -> tuple[int, int | None]:
-    """Return index of max residual magnitude in the largest integrated segment."""
+    """Return the index of the largest residual in the largest-area segment.
+
+    Parameters
+    ----------
+    residuals_magnitude : numpy.ndarray
+        Residual magnitude, shape ``(M,)``.
+    segment_ranges : list of tuple of int
+        Inclusive ``(start, end)`` index ranges, as returned by
+        :func:`segment_magnitude_integrals`.
+    integrated_areas : list of float
+        Integrated residual per segment, aligned with ``segment_ranges``.
+
+    Returns
+    -------
+    index : int
+        Index into ``residuals_magnitude`` of the maximum within the segment with
+        the largest integrated area (global maximum if there are no segments).
+    segment : int or None
+        Index of the selected segment, or ``None`` if ``integrated_areas`` is
+        empty.
+
+    See Also
+    --------
+    segment_magnitude_integrals
+    """
     if not integrated_areas:
         return int(np.argmax(residuals_magnitude)), None
     seg_i = int(np.argmax(integrated_areas))
@@ -78,7 +135,10 @@ _RELATIVE_VARIANCE_FLOOR = 1e-16
 
 
 def _validate_selection(selection: str | None, min_improvement: float) -> None:
-    """Raise ``ValueError`` for an unknown ``selection`` or bad ``min_improvement``."""
+    """Raise ``ValueError`` for an unknown ``selection`` or bad ``min_improvement``.
+
+    ``min_improvement`` must lie in ``[0, 1)``.
+    """
     if selection not in _SELECTION_MODES:
         raise ValueError(
             f"Unknown selection {selection!r}; use None, 'bic', 'aic' or 'kk'."
@@ -90,7 +150,10 @@ def _validate_selection(selection: str | None, min_improvement: float) -> None:
 
 
 def _residual_weights(data: EISData, weighting: str) -> np.ndarray:
-    """Per-frequency residual weights matching ``impendance_fit``."""
+    """Return per-frequency residual weights matching ``impendance_fit``.
+
+    :math:`1/|Z_k|` for ``"modulus"`` (floored away from zero), otherwise ones.
+    """
     z_abs = np.abs(data.Real + 1j * data.Imag)
     if weighting == "modulus":
         return 1.0 / np.maximum(z_abs, np.finfo(float).tiny)
@@ -98,10 +161,11 @@ def _residual_weights(data: EISData, weighting: str) -> np.ndarray:
 
 
 def _weighted_rss(res: FitResults, data: EISData, weighting: str) -> float:
-    r"""Weighted residual sum of squares over the :math:`2M` impedance rows.
+    r"""Return the weighted residual sum of squares over the :math:`2M` rows.
 
-    Recomputed from the (unweighted) ``res.residuals`` so the margin penalty
-    rows included in ``res.cost`` do not enter the criterion.
+    Recomputed from the unweighted ``res.residuals_magnitude``
+    (:math:`|r_k|^2 = r_{k,\mathrm{re}}^2 + r_{k,\mathrm{im}}^2`) so the margin
+    penalty rows included in ``res.cost`` do not enter the criterion.
     """
     w = _residual_weights(data, weighting)
     return float(np.sum((res.residuals_magnitude * w) ** 2))
@@ -110,8 +174,36 @@ def _weighted_rss(res: FitResults, data: EISData, weighting: str) -> float:
 def information_criterion(
     res: FitResults, data: EISData, weighting: str = "modulus", kind: str = "bic"
 ) -> float:
-    r"""Gaussian least-squares BIC or AIC of a ``complex_fit=True`` fit.
+    r"""Return the Gaussian least-squares BIC or AIC of a ``complex_fit=True`` fit.
 
+    Parameters
+    ----------
+    res : FitResults
+        Fit result (``n_groups`` branches).
+    data : EISData
+        Spectrum the fit was made on.
+    weighting : {"modulus", "unit"}, default "modulus"
+        Weighting used by the fit. Any value other than ``"modulus"`` is
+        treated as ``"unit"``.
+    kind : {"bic", "aic"}, default "bic"
+        Criterion.
+
+    Returns
+    -------
+    float
+        Criterion value (lower is better).
+
+    Raises
+    ------
+    ValueError
+        If ``kind`` is not ``"bic"`` or ``"aic"``.
+
+    See Also
+    --------
+    fit_circuit : Uses this criterion when ``selection`` is ``"bic"``/``"aic"``.
+
+    Notes
+    -----
     .. math::
 
         \mathrm{BIC} = N \ln(\mathrm{RSS}/N) + k \ln N, \qquad
@@ -124,22 +216,6 @@ def information_criterion(
     :math:`R_i, C_i, e_i` per branch). :math:`\mathrm{RSS}/N` is floored at
     ``1e-16`` times the mean squared weighted impedance, so fits of noise-free
     data that differ only by round-off compare by the penalty term alone.
-
-    Parameters
-    ----------
-    res : FitResults
-        Fit result (``n_groups`` branches).
-    data : EISData
-        Spectrum the fit was made on.
-    weighting : {"modulus", "unit"}
-        Weighting used by the fit.
-    kind : {"bic", "aic"}
-        Criterion.
-
-    Returns
-    -------
-    float
-        Criterion value (lower is better).
     """
     w = _residual_weights(data, weighting)
     z = data.Real + 1j * data.Imag
@@ -177,62 +253,53 @@ def fit_circuit(
 ) -> FitResults:
     r"""Fit the R–CPE ladder with iterative fast branch building (IFBB).
 
-    **Algorithm.**
-
-    #. Seed parameters with :func:`~blowing_bubbles.scripts.fit_circuit.initial_fit`
-       (Nyquist peak widths and characteristic frequencies).
-    #. Run :func:`~blowing_bubbles.scripts.global_minimize.impendance_fit` with
-       ``complex_fit=True`` for the initial branch count.
-    #. While ``n_groups < rc_groups``, insert a new branch at the frequency where
-       the residual magnitude is largest on the segment with greatest
-       :math:`\int |\hat{Z} - Z|\, d\log_{10} f` and re-fit (up to three attempts).
-       If the new branch is not accepted (see ``selection`` and
-       ``min_improvement``), expansion stops and the previous fit is returned.
-
-    **Model selection.** Adding a branch can never raise the least-squares
-    cost, so with ``selection=None`` the fit keeps adding branches up to
-    ``rc_groups`` even when the extra branch only duplicates an existing one
-    (same :math:`\tau`) and lowers the cost by round-off. The ``selection``
-    criteria weigh the cost decrease against the extra parameters and stop
-    expansion once another branch is not justified by the data.
-
     Parameters
     ----------
     data : EISData
-        Measured impedance vs. frequency.
+        Measured impedance (Ω) vs. frequency (Hz).
     n_restarts : int
-        Random restarts passed to each
-        :func:`~blowing_bubbles.scripts.global_minimize.impendance_fit` call.
-    rc_groups : int
+        Random restarts for the initial
+        :func:`~blowing_bubbles.scripts.global_minimize.impendance_fit` call;
+        each branch-expansion attempt uses ``max(1, n_restarts // 2)``.
+    rc_groups : int, default 5
         Maximum number of parallel R–CPE branches (values above 5 emit a warning).
-    verbose : bool
+    initial_peaks : int, default 2
+        Maximum number of Nyquist peaks (and hence branches) in the initial
+        guess, passed as ``max_peaks`` to
+        :func:`~blowing_bubbles.scripts.global_minimize.initial_fit`.
+    verbose : bool, default False
         Print branch counts and cost changes during expansion.
     seed : int, optional
-        RNG seed for parameter perturbations between restarts.
+        RNG seed for parameter perturbations between restarts. ``None`` uses
+        fresh entropy.
     tau_bounds : tuple of float, optional
-        Bounds on :math:`\tau_i = R_i C_i` forwarded to the fitter.
+        Bounds on :math:`\tau_i = R_i C_i` (s) forwarded to the initial guess
+        and the fitter. ``None`` uses the fitter's data-derived defaults.
     resistance_source_bounds : tuple of float, optional
-        ``(R_s_min, R_s_max)`` box bounds for the source resistance. The default
-        lower bound keeps :math:`R_s` strictly positive, so relative errors in
-        :math:`R_s` stay finite.
+        ``(R_s_min, R_s_max)`` box bounds (Ω) for the source resistance. The
+        default (``None``) lower bound keeps :math:`R_s` strictly positive, so
+        relative errors in :math:`R_s` stay finite.
     resistance_branch_bounds : tuple of float, optional
-        ``(R_min, R_max)`` uniform box bounds for all branch resistances.
+        ``(R_min, R_max)`` uniform box bounds (Ω) for all branch resistances.
+        ``None`` uses the fitter's defaults.
     exponent_bounds : tuple of float, optional
-        ``(e_min, e_max)`` uniform box bounds for all CPE exponents.
-    inductance_exponent_bounds : tuple of float or None
-        Bounds on the inductor exponent :math:`n_L`; default ``(0.7, 1.0)``
-        unless ``exponent_bounds`` is given.
-    weighting : {"modulus", "unit"}
-        Residual weighting passed to the fitter. ``"modulus"`` (default) divides
-        each residual by :math:`|Z_k|`, so small high-frequency arcs carry weight;
+        ``(e_min, e_max)`` uniform box bounds for all CPE exponents (and the
+        inductor exponent). ``None`` uses the fitter's defaults.
+    inductance_exponent_bounds : tuple of float, optional
+        Bounds on the inductor exponent :math:`n_L`. ``None`` means
+        ``(0.7, 1.0)`` unless ``exponent_bounds`` is given.
+    weighting : {"modulus", "unit"}, default "modulus"
+        Residual weighting passed to the fitter. ``"modulus"`` divides each
+        residual by :math:`|Z_k|`, so small high-frequency arcs carry weight;
         ``"unit"`` reproduces the unweighted objective of version 0.1.
-    n_jobs : int, optional
-        Worker processes for the restarts (``1``: sequential, default; ``-1``:
-        all cores). Scripts using ``n_jobs != 1`` on Windows/macOS need an
+    n_jobs : int or None, default 1
+        Worker processes for the restarts (``1``, ``0`` or ``None``:
+        sequential; ``-1``: all cores). A process pool is created once and
+        shared by all sub-fits. Scripts using ``n_jobs != 1`` on Windows/macOS need an
         ``if __name__ == "__main__":`` guard.
     early_stop : int, optional
         Stop the restarts of each sub-fit once this many reached the best cost.
-        ``None`` (default) runs all restarts.
+        ``None`` runs all restarts.
     selection : {None, "bic", "aic", "kk"}, optional
         Criterion for accepting another branch.
 
@@ -250,10 +317,10 @@ def fit_circuit(
           :func:`~blowing_bubbles.scripts.quality.fit_quality`, i.e. its
           relative RMS residual is within ``kk_ratio_threshold`` (default 3)
           times the Lin-KK noise floor of the spectrum.
-    min_improvement : float
+    min_improvement : float, default 0.0
         Minimum relative cost decrease :math:`(c_{old} - c_{new}) / c_{old}`
-        required to accept a branch, in every ``selection`` mode. The default
-        ``0.0`` accepts any decrease.
+        required to accept a branch, in every ``selection`` mode. Must lie in
+        ``[0, 1)``; ``0.0`` accepts any decrease.
 
     Returns
     -------
@@ -270,7 +337,51 @@ def fit_circuit(
     ------
     ValueError
         If ``selection`` is not one of the options above or ``min_improvement``
-        is negative.
+        is outside ``[0, 1)``.
+    RuntimeError
+        If the initial fit or a branch-expansion fit (all attempts) does not
+        converge.
+
+    Warns
+    -----
+    UserWarning
+        If ``rc_groups`` is greater than 5.
+
+    See Also
+    --------
+    information_criterion
+    blowing_bubbles.scripts.global_minimize.impendance_fit
+    blowing_bubbles.scripts.quality.fit_quality
+
+    Notes
+    -----
+    **Algorithm.**
+
+    #. Seed parameters with
+       :func:`~blowing_bubbles.scripts.global_minimize.initial_fit`
+       (Nyquist peak widths and characteristic frequencies, at most
+       ``initial_peaks`` branches).
+    #. Run :func:`~blowing_bubbles.scripts.global_minimize.impendance_fit` with
+       ``complex_fit=True`` for the initial branch count.
+    #. While ``n_groups < rc_groups``, insert a new branch at the frequency where
+       the residual magnitude (divided by :math:`|Z_k|` for ``"modulus"``
+       weighting) is largest on the segment with greatest
+       :math:`\int |\hat{Z} - Z|\, d\log_{10} f`. The new branch is ideal
+       (:math:`e = 1`) with :math:`\tau = 1/(2\pi f)` at that frequency and
+       :math:`R` equal to 0.6 times the :math:`Z'` span of the segment. Re-fit
+       up to three times with different seeds, stopping as soon as the cost does
+       not exceed the previous fit's. If the new branch is not accepted (see
+       ``selection`` and ``min_improvement``), expansion stops and the previous
+       fit is returned.
+
+    **Model selection.** Adding a branch can never raise the least-squares
+    cost, so with ``selection=None`` the fit keeps adding branches up to
+    ``rc_groups`` even when the extra branch only duplicates an existing one
+    (same :math:`\tau`) and lowers the cost by round-off. The ``selection``
+    criteria weigh the cost decrease against the extra parameters and stop
+    expansion once another branch is not justified by the data.
+
+    With ``verbose=True`` progress and cost changes are printed to stdout.
     """
     _validate_selection(selection, min_improvement)
     jobs = _resolve_n_jobs(n_jobs)
@@ -318,6 +429,11 @@ def _fit_circuit_impl(
     selection: str | None = None,
     min_improvement: float = 0.0,
 ) -> FitResults:
+    """Run the IFBB expansion for :func:`fit_circuit`.
+
+    ``fit_kwargs`` (``executor``, ``early_stop``, ``inductance_exponent_bounds``)
+    is forwarded to every ``impendance_fit`` call.
+    """
     _validate_selection(selection, min_improvement)
     if rc_groups > 5:
         warnings.warn("rc_groups is greater than 5.", stacklevel=2)
@@ -353,7 +469,7 @@ def _fit_circuit_impl(
         raise RuntimeError("Initial impedance fit did not converge.")
 
     def _criterion(fit: FitResults) -> tuple[float | None, bool]:
-        """Criterion value and, for ``"kk"``, whether the fit is adequate."""
+        """Return the criterion value and whether a ``"kk"`` fit is adequate."""
         if selection in ("bic", "aic"):
             return information_criterion(fit, data, weighting, kind=selection), False
         if selection == "kk":
@@ -362,6 +478,7 @@ def _fit_circuit_impl(
         return None, False
 
     def _entry(fit: FitResults, value: float | None, accepted: bool) -> dict:
+        """Return the ``history`` record for one branch count."""
         entry = {
             "n_groups": int(fit.n_groups),
             "cost": float(fit.cost),
