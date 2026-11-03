@@ -47,12 +47,12 @@ installs by default. From the project root:
 
 ```bash
 uv sync
-uv run sphinx-build -W -b html docs docs/_build
+uv run sphinx-build -W -b html docs/source docs/build/html
 ```
 
-Then open `docs/_build/index.html` in a browser.
+Then open `docs/build/html/index.html` in a browser.
 
 The build also runs the scripts in `examples/` to generate the example gallery.
 That takes a few minutes the first time; after that, only changed examples are
 re-run. To re-read all source files, add `-E`; to start completely fresh, delete
-`docs/_build/`. See `docs/getting_started.rst` for more details.
+`docs/build/`. See `docs/source/getting_started.rst` for more details.

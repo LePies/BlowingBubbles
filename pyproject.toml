@@ -37,8 +37,10 @@ desktop = [
     "pyinstaller>=6.0",
 ]
 docs = [
-    "furo>=2024.1",
-    "sphinx>=7,<9",
+    "furo>=2025.12.19",
+    "myst-parser>=5.1.0",
+    "sphinx>=9.0.4",
+    "sphinx-autoapi>=3.8.1",
     "sphinx-gallery>=0.16",
     "sphinxcontrib-bibtex>=2.7.0",
 ]

@@ -1,1 +1,0 @@
-**API reference:** :doc:`Circuit Impedance </api/circuit_impedance/impedance>` · :doc:`Circuit Classes </api/classes/circuit_classes>` · :doc:`Data Classes </api/classes/data_classes>` · :doc:`Scripts </api/scripts/index>` · :doc:`Fit Circuit </api/scripts/fit_circuit>`
