@@ -97,8 +97,8 @@ class TodoListDirective(Directive):
 project = "BlowingBubbles"
 copyright = "2026, OliverMohr"
 author = "OliverMohr"
-release = "0.1.0"
-version = "0.1"
+release = "0.2.0"
+version = "0.2"
 
 extensions = [
     "sphinx.ext.autodoc",

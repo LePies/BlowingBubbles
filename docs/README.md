@@ -8,7 +8,7 @@ From the **project root**:
 
 ```powershell
 uv sync
-uv run sphinx-build -b html docs docs/_build
+uv run sphinx-build -W -b html docs docs/_build
 ```
 
 Open `docs/_build/index.html` in a browser.

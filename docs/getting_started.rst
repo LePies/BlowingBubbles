@@ -102,7 +102,7 @@ The documentation is built with Sphinx. From the project root:
    uv sync
    uv run ruff check .
    uv run ty check
-   uv run sphinx-build -b html docs docs/_build
+   uv run sphinx-build -W -b html docs docs/_build
 
 Open :file:`docs/_build/index.html` in a browser.
 

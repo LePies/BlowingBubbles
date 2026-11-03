@@ -6,7 +6,7 @@
 
 Computation times
 =================
-**00:11.950** total execution time for 2 files **from all galleries**:
+**00:04.719** total execution time for 2 files **from all galleries**:
 
 .. container::
 
@@ -32,9 +32,9 @@ Computation times
    * - Example
      - Time
      - Mem (MB)
-   * - :ref:`sphx_glr_auto_examples_quick_fit_demo.py` (``..\examples\quick_fit_demo.py``)
-     - 00:11.950
+   * - :ref:`sphx_glr_auto_examples_quick_fit_demo.py` (``../examples/quick_fit_demo.py``)
+     - 00:04.719
      - 0.0
-   * - :ref:`sphx_glr_auto_examples_plot_circuit_demo.py` (``..\examples\plot_circuit_demo.py``)
+   * - :ref:`sphx_glr_auto_examples_plot_circuit_demo.py` (``../examples/plot_circuit_demo.py``)
      - 00:00.000
      - 0.0
