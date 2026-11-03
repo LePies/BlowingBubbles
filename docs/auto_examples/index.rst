@@ -48,7 +48,7 @@ build the documentation; outputs appear in the gallery below.
 
 .. raw:: html
 
-      <div class="sphx-glr-thumbnail-title">Quick Fitting Demo</div>
+      <div class="sphx-glr-thumbnail-title">Quick fitting demo</div>
     </div>
 
 

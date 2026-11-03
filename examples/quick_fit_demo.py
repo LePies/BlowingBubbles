@@ -1,6 +1,6 @@
 """
-Quick Fitting Demo
-=================
+Quick fitting demo
+==================
 
 Demonstrate fine-tuning of EIS circuit parameters using
 :meth:`~blowing_bubbles.classes.data_classes.EISData.quick_fit` and the
@@ -13,10 +13,9 @@ This example shows a typical workflow:
 3. Use ``quick_fit`` to refine parameters with tighter constraints
 4. Compare the results
 
-The ``quick_fit`` method uses global optimization
-(via ``scipy.optimize.dual_annealing``) and is designed for fast,
-targeted optimization starting from good initial guesses.
-It's particularly useful for:
+``quick_fit`` runs a global optimization (via ``scipy.optimize.dual_annealing``)
+and is designed for fast, targeted refinement starting from good initial
+guesses. It is particularly useful for:
 
 - Fine-tuning parameters within specific bounds
 - Quick re-fitting with different constraints
