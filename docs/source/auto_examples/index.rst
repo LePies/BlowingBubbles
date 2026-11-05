@@ -19,6 +19,22 @@ uv run python examples/plot_circuit_demo.py
 
 For matplotlib plots, name scripts ``plot_*.py`` and add ``matplotlib`` to your project dependencies.
 
+## Demo notebooks
+
+The ``notebooks/`` folder holds interactive demo notebooks (numbered tutorials, like
+the nest-soc project) that walk through the Python API: loading and inspecting spectra,
+fitting the R-CPE circuit, and refining with ``quick_fit`` plus Lin-KK fit-quality checks.
+
+Open them with Jupyter:
+
+```powershell
+uv sync
+uv run jupyter notebook examples/notebooks
+```
+
+They are also rendered into the documentation under *Examples* (the docs build copies
+them into ``docs/source/notebooks/``; re-execute the notebooks to refresh their outputs).
+
 
 .. raw:: html
 
