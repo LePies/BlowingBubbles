@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/blowing_bubbles/ui/assets/icon.svg" width="140" alt="BlowingBubbles icon">
+</p>
+
 # BlowingBubbles
 
 Python tools for electrochemical impedance spectroscopy (EIS): load spectra, evaluate

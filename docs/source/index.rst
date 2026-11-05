@@ -5,6 +5,10 @@
 Welcome to BlowingBubbles documentation!
 =========================================
 
+.. image:: _static/icon.svg
+   :width: 120px
+   :align: center
+
 .. warning::
     These docs are under active development and may change without notice.
 
