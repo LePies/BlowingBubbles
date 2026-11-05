@@ -1,5 +1,11 @@
 # BlowingBubbles
 
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.14%2B-blue" alt="Python 3.14+">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT">
+  <img src="https://img.shields.io/badge/docs-no_finished_builds-red" alt="Docs: no finished builds">
+</p>
+
 Python tools for electrochemical impedance spectroscopy (EIS): load spectra, evaluate
 the R–CPE equivalent circuit, and fit branch parameters.
 
