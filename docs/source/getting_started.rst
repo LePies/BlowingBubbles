@@ -29,6 +29,19 @@ Examples (Sphinx-Gallery)
 Scripts in :file:`examples/` are executed when you build the docs. The gallery
 appears under :doc:`auto_examples/index`.
 
+Demo notebooks
+--------------
+
+Interactive, numbered demo notebooks live in :file:`examples/notebooks/`. They walk
+through the Python API step by step (loading and inspecting spectra, fitting the
+R\u2013CPE circuit, refining with ``quick_fit`` and Lin-KK quality checks) and are
+rendered under *Examples* in these docs. To run them locally:
+
+.. code-block:: bash
+
+   uv sync
+   uv run jupyter notebook examples/notebooks
+
 Interactive UI
 --------------
 
