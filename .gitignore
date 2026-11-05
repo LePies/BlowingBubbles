@@ -21,3 +21,5 @@ __pycache__/
 *.py[cod]
 *$py.class
 .Python
+# Copied into the docs source tree at build time (see docs/source/conf.py)
+docs/source/notebooks/
