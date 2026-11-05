@@ -23,8 +23,16 @@ Check out the :doc:`getting_started` section for further information.
    :caption: Contents:
 
    getting_started
-   auto_examples/index
    units
    todo
    citation
    references
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Examples:
+
+   auto_examples/index
+   notebooks/0_loading_and_inspecting_data
+   notebooks/1_fitting_a_spectrum
+   notebooks/2_quick_fit_and_fit_quality

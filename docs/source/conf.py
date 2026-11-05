@@ -4,6 +4,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 import re
+import shutil
 from pathlib import Path
 
 from docutils import nodes
@@ -21,17 +22,28 @@ release = "0.2.0"
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
+# "myst_nb" registers the MyST parser itself (listing "myst_parser" as well
+# would run its setup twice and fail), so only "myst_nb" is listed here.
 extensions = [
     "autoapi.extension",
     "sphinx.ext.napoleon",
     "sphinx.ext.mathjax",
-    "myst_parser",
+    "myst_nb",
     "sphinx_gallery.gen_gallery",
     "sphinxcontrib.bibtex",
 ]
 
 templates_path = ["_templates"]
-exclude_patterns = []
+# myst_nb registers ".ipynb" as a source suffix; keep the sphinx-gallery
+# generated files in auto_examples/ (except the .rst pages) from being read
+# as duplicate sources.
+exclude_patterns = [
+    "auto_examples/*.ipynb",
+    "auto_examples/*.py",
+    "auto_examples/*.zip",
+    "auto_examples/*.md5",
+    "auto_examples/*.codeobj.json",
+]
 
 napoleon_use_ivar = True
 
@@ -55,6 +67,22 @@ autoapi_options = [
     "show-module-summary",
     "special-members",
 ]  # default minus 'imported-members'
+
+
+# -- Demo notebooks (MyST-NB) -------------------------------------------------
+# The demo notebooks live in examples/notebooks/ next to the sphinx-gallery
+# scripts and are copied into the source tree at build time (Sphinx can only
+# read sources inside the source directory). The copy is git-ignored; the
+# notebooks are executed manually (jupyter) and rendered from their stored
+# outputs, so the docs build does not need a kernel.
+
+_source_dir = Path(__file__).resolve().parent
+_examples_notebooks = _source_dir.parent.parent / "examples" / "notebooks"
+_notebooks_dir = _source_dir / "notebooks"
+if _examples_notebooks.is_dir():
+    shutil.copytree(_examples_notebooks, _notebooks_dir, dirs_exist_ok=True)
+
+nb_execution_mode = "off"
 
 
 # -- Sphinx-Gallery ----------------------------------------------------------
