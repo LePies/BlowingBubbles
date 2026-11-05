@@ -53,6 +53,9 @@ napoleon_use_ivar = True
 
 html_theme = "furo"
 
+html_logo = "_static/icon.svg"
+html_favicon = "_static/icon.png"
+
 # -- Auto-api setup ----------------------------------------------------------
 
 autoapi_dirs = ["../../src/blowing_bubbles"]
