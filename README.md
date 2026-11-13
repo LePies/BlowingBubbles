@@ -13,6 +13,12 @@
 Python tools for electrochemical impedance spectroscopy (EIS): load spectra, evaluate
 the R–CPE equivalent circuit, and fit branch parameters.
 
+## Installation
+
+```bash
+pip install blowing-bubbles
+```
+
 ## License
 
 Released under the [MIT License](LICENSE): free use, modification, and redistribution.
