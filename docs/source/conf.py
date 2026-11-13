@@ -17,7 +17,7 @@ from docutils.statemachine import StringList
 project = "BlowingBubbles"
 copyright = "2026, OliverMohr"
 author = "OliverMohr"
-release = "0.2.0"
+release = "0.3.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

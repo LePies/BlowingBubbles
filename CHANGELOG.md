@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-11-13)
 
 ### Fixed
 - **Series resistance collapsed to R_s = 0** in 20 of 83 EK3 fits and in most
