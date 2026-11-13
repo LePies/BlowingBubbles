@@ -9,6 +9,23 @@ authors = [
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.13"
+keywords = [
+    "electrochemistry",
+    "impedance spectroscopy",
+    "EIS",
+    "equivalent circuit",
+    "CPE",
+    "fitting",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
 dependencies = [
     "matplotlib>=3.4",
     "numpy>=1.20",
@@ -17,6 +34,12 @@ dependencies = [
     "streamlit>=1.66.1",
     "tool>=0.8.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/LePies/BlowingBubbles"
+Issues = "https://github.com/LePies/BlowingBubbles/issues"
+Changelog = "https://github.com/LePies/BlowingBubbles/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/LePies/BlowingBubbles/tree/main/docs"
 
 [build-system]
 requires = ["uv_build>=0.11.16,<0.14.0"]
