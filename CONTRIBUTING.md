@@ -43,12 +43,42 @@ uv sync --no-default-groups --group dev --group ui
 uv run pytest -q src/tests/test_ui_smoke.py src/tests/test_ui_batch.py src/tests/test_ui_desktop.py
 ```
 
+## Branching model
+
+The branch structure mirrors [dtudk/nest-soc](https://github.com/dtudk/nest-soc):
+
+- `main` is the default branch and only receives releases (`dev` → `main`) or
+  hotfixes (`bug-fix/*` → `main`). Which source branches may target `main` is
+  enforced by the `Source branch` status check
+  (`.github/workflows/main-source-branch.yml`), required by the `main` ruleset
+  in `.github/rulesets/main.json`.
+- `dev` is the integration branch. Cut `feature/*`, `fix/*`, `chore/*` and
+  Dependabot branches from `dev` and open PRs into `dev`.
+- For PRs into `main`, pick the main template by adding `?template=main.md` to
+  the compare URL (`.github/PULL_REQUEST_TEMPLATE/main.md`).
+
+## Repository rulesets
+
+The rulesets in [.github/rulesets/](.github/rulesets) mirror dtudk/nest-soc and
+are applied through the GitHub API:
+
+```bash
+gh api -X POST repos/LePies/BlowingBubbles/rulesets --input .github/rulesets/dev.json
+gh api -X POST repos/LePies/BlowingBubbles/rulesets --input .github/rulesets/main.json
+```
+
+Repository rulesets on a private repository require GitHub Pro/Team (or a
+public repository). On the free plan these files are the source of truth; the
+`Source branch` check still runs on every PR into `main`, and CI must pass on
+every PR.
+
 ## Pull requests
 
 - Keep changes focused; one logical change per PR.
-- Fill in the PR template checklist (lint, format, type check, deptry, tests).
+- PRs target `dev`; fill in the PR template checklist (lint, format, type
+  check, deptry, tests).
 - CI (`.github/workflows/ci.yml`) must pass on the PR; docs changes are built by
   `.github/workflows/docs.yml`.
-- Releases are cut by pushing a `v*.*.*` tag; `.github/workflows/release.yml`
-  builds the distributions and creates the GitHub release. Update
-  [CHANGELOG.md](CHANGELOG.md) before tagging.
+- Releases are cut by pushing a `v*.*.*` tag on `main`;
+  `.github/workflows/release.yml` builds the distributions and creates the GitHub
+  release. Update [CHANGELOG.md](CHANGELOG.md) before tagging.
