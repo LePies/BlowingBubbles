@@ -80,5 +80,12 @@ every PR.
 - CI (`.github/workflows/ci.yml`) must pass on the PR; docs changes are built by
   `.github/workflows/docs.yml`.
 - Releases are cut by pushing a `v*.*.*` tag on `main`;
-  `.github/workflows/release.yml` builds the distributions and creates the GitHub
-  release. Update [CHANGELOG.md](CHANGELOG.md) before tagging.
+  `.github/workflows/release.yml` builds the distributions, publishes them to
+  PyPI via trusted publishing, and creates the GitHub release. Before tagging,
+  bump the version in `pyproject.toml` and `docs/source/conf.py`, and move the
+  `Unreleased` section in [CHANGELOG.md](CHANGELOG.md) under the new version.
+- One-time PyPI setup (no API token needed): on pypi.org, register a trusted
+  publisher for owner `LePies`, repository `BlowingBubbles`, workflow file
+  `release.yml`. To dry-run the upload, point `pypa/gh-action-pypi-publish` at
+  TestPyPI (`repository-url: https://test.pypi.org/legacy/`) from a scratch
+  workflow.
