@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.2.1 (2026-11-13)
+
+### Changed
+- README links the hosted documentation (Read the Docs badge and Documentation
+  section); the "under active development" warning box was removed from the
+  docs landing page.
+- Added `.zenodo.json` metadata and a Zenodo DOI badge: every GitHub release is
+  archived on Zenodo with a versioned DOI.
+- `CHANGELOG.md` finalized for the 0.2.0 release; `CITATION.cff` version kept in
+  sync with the package version.
+
 ## 0.2.0 (2026-11-13)
 
 Corrections found in a review of the method against synthetic ground truth.
