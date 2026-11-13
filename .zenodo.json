@@ -1,0 +1,20 @@
+{
+  "title": "BlowingBubbles",
+  "description": "Python tools for electrochemical impedance spectroscopy (EIS): load spectra, evaluate the R\u2013CPE equivalent circuit, and fit branch parameters.",
+  "license": "MIT",
+  "upload_type": "software",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Mohr, Oliver"
+    }
+  ],
+  "keywords": [
+    "electrochemistry",
+    "electrochemical impedance spectroscopy",
+    "EIS",
+    "equivalent circuit",
+    "CPE",
+    "fitting"
+  ]
+}
