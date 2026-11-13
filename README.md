@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.14%2B-blue" alt="Python 3.14+">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT">
-  <img src="https://img.shields.io/badge/docs-no_finished_builds-red" alt="Docs: no finished builds">
+  <a href="https://blowingbubbles.readthedocs.io/en/latest/"><img src="https://readthedocs.org/projects/blowingbubbles/badge/?version=latest" alt="Documentation Status"></a>
 </p>
 
 Python tools for electrochemical impedance spectroscopy (EIS): load spectra, evaluate
@@ -61,6 +61,8 @@ The exe needs the WebView2 runtime on the target machine (preinstalled on
 Windows 11; a bootstrapper is available for Windows 10).
 
 ## Documentation
+
+Read the documentation on [Read the Docs](https://blowingbubbles.readthedocs.io/en/latest/).
 
 The documentation is built with [Sphinx](https://www.sphinx-doc.org/). The
 Sphinx dependencies are in the `docs` dependency group, which `uv sync`

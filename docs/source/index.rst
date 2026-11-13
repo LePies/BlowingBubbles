@@ -9,9 +9,6 @@ Welcome to BlowingBubbles documentation!
    :width: 120px
    :align: center
 
-.. warning::
-    These docs are under active development and may change without notice.
-
 **BlowingBubbles** is a Python library for equivalent-circuit fitting of
 electrochemical impedance spectra (EIS): load spectra, evaluate the R–CPE
 equivalent circuit, and fit branch parameters.
