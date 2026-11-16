@@ -10,6 +10,7 @@ authors:
 license: MIT
 repository-code: 'https://github.com/LePies/BlowingBubbles'
 version: 0.2.1
+doi: 10.5281/zenodo.24272629
 preferred-citation:
   type: article
   authors:
