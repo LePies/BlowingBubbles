@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/python-3.14%2B-blue" alt="Python 3.14+">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT">
   <a href="https://blowingbubbles.readthedocs.io/en/latest/"><img src="https://readthedocs.org/projects/blowingbubbles/badge/?version=latest" alt="Documentation Status"></a>
-  <a href="https://zenodo.org/badge/latestdoi/1246712380"><img src="https://zenodo.org/badge/1246712380.svg" alt="DOI"></a>
+  <a href="https://doi.org/10.5281/zenodo.24272629"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.24272629.svg" alt="DOI"></a>
 </p>
 
 Python tools for electrochemical impedance spectroscopy (EIS): load spectra, evaluate
@@ -36,8 +36,9 @@ citable reports), please cite the entry in [`CITATION.bib`](CITATION.bib) or
 [`CITATION.cff`](CITATION.cff). Private or internal use does not require a citation.
 See [`ACADEMIC_CITATION.md`](ACADEMIC_CITATION.md).
 
-Each release is archived on [Zenodo](https://zenodo.org/badge/latestdoi/1246712380)
-with a versioned DOI — cite the exact version you used.
+Each release is archived on [Zenodo](https://doi.org/10.5281/zenodo.24272629)
+(concept DOI; v0.2.1: [10.5281/zenodo.24272630](https://doi.org/10.5281/zenodo.24272630))
+— cite the exact version you used.
 
 ## Interactive UI
 
