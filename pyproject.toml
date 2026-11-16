@@ -1,6 +1,6 @@
 [project]
 name = "blowing-bubbles"
-version = "0.2.0"
+version = "0.2.1"
 description = "Equivalent-circuit fitting of electrochemical impedance spectra (EIS)."
 readme = "README.md"
 authors = [
